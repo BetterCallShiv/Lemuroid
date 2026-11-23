@@ -11,17 +11,21 @@
 
 ## 📸 Screenshots
 
-| <img src="docs/screenshots/home_screen.jpg" width="270" alt="Home Screen"/> | <img src="docs/screenshots/system_grid_filters.jpg" width="270" alt="System Grid View"/> | <img src="docs/screenshots/favorites_screen.jpg" width="270" alt="Favorites Screen"/> |
+| <img src="docs/screenshots/home.jpg" width="270" alt="Home Screen"/> | <img src="docs/screenshots/discover.jpg" width="270" alt="Discover & Collections"/> | <img src="docs/screenshots/systems.jpg" width="270" alt="System Grid View"/> |
 |:---:|:---:|:---:|
-| **Continue Playing & Home** | **Grid View & Genre Filters** | **Favorites & Filter Chips** |
+| **Continue Playing & Home** | **Discover & Collections** | **Grid View & Genre Filters** |
 
-| <img src="docs/screenshots/game_details_top.jpg" width="270" alt="Game Details Top"/> | <img src="docs/screenshots/game_details_ra.jpg" width="270" alt="Game Details RA"/> | <img src="docs/screenshots/retroachievements_sheet.jpg" width="270" alt="RetroAchievements Sheet"/> |
+| <img src="docs/screenshots/favorites.jpg" width="270" alt="Favorites Screen"/> | <img src="docs/screenshots/stats.jpg" width="270" alt="Library Stats"/> | <img src="docs/screenshots/details.jpg" width="270" alt="Game Details"/> |
 |:---:|:---:|:---:|
-| **Rich Game Details & Media** | **RA Progress & File Info** | **Expandable Achievements Sheet** |
+| **Favorites & Filter Chips** | **Library Statistics Breakdown** | **Rich Game Details & Media** |
 
-| <img src="docs/screenshots/retroachievements_banner.jpg" width="200" alt="In-Game Unlock Banner"/> | <img src="docs/screenshots/retroachievements_modal.jpg" width="200" alt="Achievement Details Modal"/> | <img src="docs/screenshots/in_game_cheats.jpg" width="200" alt="In-Game Cheat Manager"/> | <img src="docs/screenshots/in_game_patches.jpg" width="200" alt="In-Game ROM Patch Manager"/> |
-|:---:|:---:|:---:|:---:|
-| **In-Game Unlock Banner** | **Achievement Details Modal** | **In-Game Cheat Manager** | **In-Game ROM Patches** |
+| <img src="docs/screenshots/details_ra.jpg" width="270" alt="Game Details RA"/> | <img src="docs/screenshots/ra_sheet.jpg" width="270" alt="RetroAchievements Sheet"/> | <img src="docs/screenshots/ra_modal.jpg" width="270" alt="Achievement Details Modal"/> |
+|:---:|:---:|:---:|
+| **RA Progress & File Info** | **Expandable Achievements Sheet** | **Achievement Details Modal** |
+
+| <img src="docs/screenshots/ra_banner.jpg" width="270" alt="In-Game Unlock Banner"/> | <img src="docs/screenshots/cheats.jpg" width="270" alt="In-Game Cheat Manager"/> | <img src="docs/screenshots/patches.jpg" width="270" alt="In-Game ROM Patch Manager"/> |
+|:---:|:---:|:---:|
+| **In-Game Unlock Banner** | **In-Game Cheat Manager** | **In-Game ROM Patches** |
 
 ---
 
