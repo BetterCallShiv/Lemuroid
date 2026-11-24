@@ -259,6 +259,9 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                     is GameViewModelSideEffects.UiEffect.SaveQuickSave -> performSaveQuickSave()
                     is GameViewModelSideEffects.UiEffect.LoadQuickSave -> performLoadQuickSave()
                     is GameViewModelSideEffects.UiEffect.ToggleFastForward -> performToggleFastForward()
+                    is GameViewModelSideEffects.UiEffect.ShowFastForwardSpeedDialog -> {
+                        baseGameScreenViewModel.showFastForwardSpeedDialog.value = true
+                    }
                 }
             }
     }
@@ -429,12 +432,13 @@ abstract class BaseGameActivity : ImmersiveActivity() {
                 baseGameScreenViewModel.setFastForwardSpeed(newSpeed)
             }
             if (data?.hasExtra(GameMenuContract.RESULT_ENABLE_FAST_FORWARD) == true) {
+                val fastForwardEnabled =
+                    data.getBooleanExtra(
+                        GameMenuContract.RESULT_ENABLE_FAST_FORWARD,
+                        false,
+                    )
+                baseGameScreenViewModel.isFastForwardEnabled.value = fastForwardEnabled
                 baseGameScreenViewModel.retroGameView.retroGameView?.apply {
-                    val fastForwardEnabled =
-                        data.getBooleanExtra(
-                            GameMenuContract.RESULT_ENABLE_FAST_FORWARD,
-                            false,
-                        )
                     val speed = baseGameScreenViewModel.getFastForwardSpeed()
                     this.frameSpeed = if (fastForwardEnabled) speed else 1
                 }

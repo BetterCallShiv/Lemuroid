@@ -20,7 +20,7 @@ class StatesManager(private val directoriesManager: DirectoriesManager) {
         index: Int,
     ): SaveState? =
         withContext(Dispatchers.IO) {
-            assert(index in 0 until MAX_STATES)
+            assert(index >= 0)
             getSaveState(getSlotSaveFileName(game, index), coreID.coreName)
         }
 
@@ -30,8 +30,63 @@ class StatesManager(private val directoriesManager: DirectoriesManager) {
         coreID: CoreID,
         index: Int,
     ) = withContext(Dispatchers.IO) {
-        assert(index in 0 until MAX_STATES)
-        setSaveState(getSlotSaveFileName(game, index), coreID.coreName, saveState)
+        assert(index >= 0)
+        val fileName = getSlotSaveFileName(game, index)
+        val existingTitle = runCatching {
+            val metaFile = getMetadataStateFile(fileName, coreID.coreName)
+            if (metaFile.exists()) {
+                Json.Default.decodeFromString(
+                    SaveState.Metadata.serializer(),
+                    metaFile.readTextAtomic(),
+                ).customTitle
+            } else null
+        }.getOrNull()
+
+        val metadataToSave = if (saveState.metadata.customTitle == null && existingTitle != null) {
+            saveState.metadata.copy(customTitle = existingTitle)
+        } else {
+            saveState.metadata
+        }
+
+        setSaveState(fileName, coreID.coreName, SaveState(saveState.state, metadataToSave))
+    }
+
+    suspend fun renameSlot(
+        game: Game,
+        coreID: CoreID,
+        index: Int,
+        newTitle: String,
+    ) = withContext(Dispatchers.IO) {
+        assert(index >= 0)
+        val fileName = getSlotSaveFileName(game, index)
+        val metadataFile = getMetadataStateFile(fileName, coreID.coreName)
+        val existingMetadata = runCatching {
+            if (metadataFile.exists()) {
+                Json.Default.decodeFromString(
+                    SaveState.Metadata.serializer(),
+                    metadataFile.readTextAtomic(),
+                )
+            } else null
+        }.getOrNull() ?: SaveState.Metadata()
+
+        val updatedMetadata = existingMetadata.copy(customTitle = newTitle.trim().ifEmpty { null })
+        writeMetadataToDisk(fileName, coreID.coreName, updatedMetadata)
+    }
+
+    suspend fun deleteSlot(
+        game: Game,
+        coreID: CoreID,
+        index: Int,
+    ) = withContext(Dispatchers.IO) {
+        assert(index >= 0)
+        val stateFile = getStateFile(getSlotSaveFileName(game, index), coreID.coreName)
+        val metadataFile = getMetadataStateFile(getSlotSaveFileName(game, index), coreID.coreName)
+        val previewDir = File(directoriesManager.getStatesPreviewDirectory(), coreID.coreName)
+        val previewFile = File(previewDir, "${game.fileName}.slot${index + 1}.jpg")
+
+        if (stateFile.exists()) stateFile.delete()
+        if (metadataFile.exists()) metadataFile.delete()
+        if (previewFile.exists()) previewFile.delete()
     }
 
     suspend fun getAutoSaveInfo(
@@ -64,10 +119,56 @@ class StatesManager(private val directoriesManager: DirectoriesManager) {
         coreID: CoreID,
     ): List<SaveInfo> =
         withContext(Dispatchers.IO) {
-            (0 until MAX_STATES)
-                .map { getStateFile(getSlotSaveFileName(game, it), coreID.coreName) }
-                .map { SaveInfo(it.exists(), it.lastModified()) }
-                .toList()
+            val statesDir = File(directoriesManager.getStatesDirectory(), coreID.coreName)
+            val slotPattern = Regex("""^${Regex.escape(game.fileName)}\.slot(\d+)$""")
+            val existingIndices = mutableSetOf<Int>()
+
+            if (statesDir.exists()) {
+                statesDir.listFiles()?.forEach { file ->
+                    val match = slotPattern.find(file.name)
+                    if (match != null) {
+                        val slotNum = match.groupValues[1].toIntOrNull()
+                        if (slotNum != null && slotNum > 0) {
+                            existingIndices.add(slotNum - 1)
+                        }
+                    }
+                }
+            }
+
+            val result = mutableListOf<SaveInfo>()
+            existingIndices.sorted().forEach { idx ->
+                val stateFile = getStateFile(getSlotSaveFileName(game, idx), coreID.coreName)
+                val metadataFile = getMetadataStateFile(getSlotSaveFileName(game, idx), coreID.coreName)
+                val customTitle = runCatching {
+                    if (metadataFile.exists()) {
+                        Json.Default.decodeFromString(
+                            SaveState.Metadata.serializer(),
+                            metadataFile.readTextAtomic(),
+                        ).customTitle
+                    } else null
+                }.getOrNull()
+
+                result.add(
+                    SaveInfo(
+                        exists = stateFile.exists(),
+                        date = stateFile.lastModified(),
+                        slotIndex = idx,
+                        customTitle = customTitle,
+                    ),
+                )
+            }
+
+            val nextSlotIndex = if (existingIndices.isEmpty()) 0 else (existingIndices.maxOrNull()!! + 1)
+            result.add(
+                SaveInfo(
+                    exists = false,
+                    date = 0L,
+                    slotIndex = nextSlotIndex,
+                    customTitle = null,
+                ),
+            )
+
+            result
         }
 
     private suspend fun getSaveState(

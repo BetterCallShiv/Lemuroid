@@ -335,11 +335,32 @@ class BaseGameScreenViewModel(
         }
     }
 
+    val showFastForwardSpeedDialog = MutableStateFlow(false)
+    val isFastForwardEnabled = MutableStateFlow(false)
+
     fun toggleFastForward() {
         val speed = getFastForwardSpeed()
         retroGameView.retroGameView?.apply {
-            frameSpeed = if (frameSpeed == 1) speed else 1
+            val isNowFf = frameSpeed == 1
+            frameSpeed = if (isNowFf) speed else 1
+            isFastForwardEnabled.value = isNowFf
+            val msg = if (isNowFf) {
+                appContext.getString(R.string.game_toast_fast_forward_on, speed)
+            } else {
+                appContext.getString(R.string.game_toast_fast_forward_off)
+            }
+            sideEffects.showToast(msg)
         }
+    }
+
+    fun updateFastForwardSpeed(speed: Int) {
+        val prefs = SharedPreferencesHelper.getSharedPreferences(appContext)
+        val prefKey = appContext.getString(R.string.pref_key_fast_forward_speed)
+        prefs.edit().putInt(prefKey, speed).apply()
+        setFastForwardSpeed(speed)
+        showFastForwardSpeedDialog.value = false
+        val msg = appContext.getString(R.string.game_toast_fast_forward_speed_set, speed)
+        sideEffects.showToast(msg)
     }
 
     fun setFastForwardSpeed(speed: Int) {

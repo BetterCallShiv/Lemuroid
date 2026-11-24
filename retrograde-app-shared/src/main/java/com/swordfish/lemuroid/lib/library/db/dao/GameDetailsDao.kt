@@ -29,6 +29,12 @@ interface GameDetailsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(details: GameDetails)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrUpdateAll(details: List<GameDetails>)
+
+    @Query("SELECT * FROM game_details")
+    suspend fun getAllDetails(): List<GameDetails>
+
     @Update
     suspend fun update(details: GameDetails)
 

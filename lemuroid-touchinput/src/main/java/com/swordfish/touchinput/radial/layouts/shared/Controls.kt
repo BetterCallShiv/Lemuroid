@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.swordfish.touchinput.controller.R
+import com.swordfish.touchinput.radial.LocalFastForwardEnabled
 import com.swordfish.touchinput.radial.controls.LemuroidControlAnalog
 import com.swordfish.touchinput.radial.controls.LemuroidControlButton
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
@@ -104,13 +105,32 @@ fun SecondaryButtonMenu(settings: TouchControllerSettingsManager.Settings) {
 
 context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
-fun SecondaryButtonMenuPlaceholder(settings: TouchControllerSettingsManager.Settings) {
-    Box(
-        modifier =
-            Modifier.radialPosition(
-                -120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION,
-            ),
+fun SecondaryButtonFastForward(settings: TouchControllerSettingsManager.Settings) {
+    val isFfEnabled = LocalFastForwardEnabled.current
+    LemuroidControlButton(
+        modifier = Modifier.radialPosition(-120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION),
+        id = Id.Key(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD),
+        icon = R.drawable.button_fast_forward,
+        active = isFfEnabled,
     )
+}
+
+context(PadKitScope, LayoutRadialSecondaryDialsScope)
+@Composable
+fun SecondaryButtonFastForwardRight(settings: TouchControllerSettingsManager.Settings) {
+    val isFfEnabled = LocalFastForwardEnabled.current
+    LemuroidControlButton(
+        modifier = Modifier.radialPosition(-120f + 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION),
+        id = Id.Key(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD),
+        icon = R.drawable.button_fast_forward,
+        active = isFfEnabled,
+    )
+}
+
+context(PadKitScope, LayoutRadialSecondaryDialsScope)
+@Composable
+fun SecondaryButtonMenuPlaceholder(settings: TouchControllerSettingsManager.Settings) {
+    SecondaryButtonFastForward(settings)
 }
 
 context(PadKitScope, LayoutRadialSecondaryDialsScope)

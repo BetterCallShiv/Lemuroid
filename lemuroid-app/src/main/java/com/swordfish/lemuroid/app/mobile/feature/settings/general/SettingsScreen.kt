@@ -152,6 +152,13 @@ private fun MiscSettings(
             )
         }
         LemuroidSettingsMenuLink(
+            title = { Text(text = stringResource(id = R.string.settings_title_backup_restore)) },
+            subtitle = {
+                Text(text = stringResource(id = R.string.settings_description_backup_restore))
+            },
+            onClick = { navController.navigateToRoute(MainRoute.SETTINGS_BACKUP_RESTORE) },
+        )
+        LemuroidSettingsMenuLink(
             title = { Text(text = stringResource(id = R.string.settings_title_open_cores_selection)) },
             subtitle = {
                 Text(text = stringResource(id = R.string.settings_description_open_cores_selection))

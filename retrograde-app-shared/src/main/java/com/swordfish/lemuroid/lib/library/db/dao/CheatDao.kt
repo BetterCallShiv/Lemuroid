@@ -35,6 +35,9 @@ interface CheatDao {
     @Query("SELECT * FROM cheats WHERE gameId = :gameId AND isMasterCode = 1 ORDER BY orderIndex ASC, id ASC")
     suspend fun getMasterCodesForGameSync(gameId: Int): List<Cheat>
 
+    @Query("SELECT * FROM cheats")
+    suspend fun selectAllCheats(): List<Cheat>
+
     @Query("SELECT * FROM cheats WHERE id = :id")
     suspend fun getCheatById(id: Long): Cheat?
 

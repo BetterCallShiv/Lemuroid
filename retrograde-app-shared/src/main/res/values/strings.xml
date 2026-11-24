@@ -144,4 +144,14 @@
     <string name="game_patch_invalid_header">Invalid IPS format (missing \'PATCH\' header)</string>
     <string name="cheat_auto_discovered_desc">Auto-discovered from %1$s</string>
 
+    <!-- Backup & Restore Progress Steps -->
+    <string name="backup_step_saves_data">Backing up saves and game data…</string>
+    <string name="backup_step_media">Backing up scraped media…</string>
+    <string name="backup_step_finalizing">Finalizing backup…</string>
+    <string name="backup_step_extracting">Extracting backup files…</string>
+    <string name="backup_step_restoring_media">Restoring scraped media…</string>
+    <string name="backup_step_restoring_data">Restoring library and settings…</string>
+    <string name="backup_step_restore_complete">Restore complete!</string>
+    <string name="backup_error_open_dest">Could not open destination file for writing.</string>
+
 </resources>

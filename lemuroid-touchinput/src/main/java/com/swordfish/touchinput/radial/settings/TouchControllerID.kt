@@ -24,6 +24,7 @@ import com.swordfish.touchinput.radial.layouts.Genesis3Left
 import com.swordfish.touchinput.radial.layouts.Genesis3Right
 import com.swordfish.touchinput.radial.layouts.Genesis6Left
 import com.swordfish.touchinput.radial.layouts.Genesis6Right
+import com.swordfish.touchinput.radial.layouts.LynxCenter
 import com.swordfish.touchinput.radial.layouts.LynxLeft
 import com.swordfish.touchinput.radial.layouts.LynxRight
 import com.swordfish.touchinput.radial.layouts.MelonDSLeft
@@ -91,6 +92,10 @@ enum class TouchControllerID {
             modifier: Modifier,
             settings: TouchControllerSettingsManager.Settings,
         ) -> Unit,
+        val centerComposable: (@Composable PadKitScope.(
+            modifier: Modifier,
+            settings: TouchControllerSettingsManager.Settings,
+        ) -> Unit)? = null,
     )
 
     companion object {
@@ -202,6 +207,7 @@ enum class TouchControllerID {
                     Config(
                         { modifier, settings -> LynxLeft(modifier, settings) },
                         { modifier, settings -> LynxRight(modifier, settings) },
+                        { modifier, settings -> LynxCenter(modifier, settings) },
                     )
 
                 ATARI7800 ->

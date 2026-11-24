@@ -554,6 +554,13 @@ fun GameDetailScreen(
                             value = crc32,
                         )
                     }
+                    val raGameId = (achievementsState as? AchievementsUiState.Success)?.data?.gameId
+                    if (raGameId != null && raGameId > 0) {
+                        DetailInfoRow(
+                            label = stringResource(R.string.game_details_ra_game_id),
+                            value = raGameId.toString(),
+                        )
+                    }
                     val lastPlayedAt = game.lastPlayedAt
                     val lastPlayedText = if (lastPlayedAt != null && lastPlayedAt > 0L) {
                         java.text.DateFormat.getDateTimeInstance(

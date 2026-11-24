@@ -1,9 +1,19 @@
 package com.swordfish.touchinput.radial.layouts
 
 import android.view.KeyEvent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.absolutePadding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
+import com.swordfish.touchinput.controller.R
+import com.swordfish.touchinput.radial.LocalFastForwardEnabled
 import com.swordfish.touchinput.radial.controls.LemuroidControlButton
 import com.swordfish.touchinput.radial.controls.LemuroidControlCross
 import com.swordfish.touchinput.radial.controls.LemuroidControlFaceButtons
@@ -69,4 +79,37 @@ fun PadKitScope.LynxRight(
             SecondaryButtonMenu(settings)
         },
     )
+}
+
+@Composable
+fun PadKitScope.LynxCenter(
+    modifier: Modifier = Modifier,
+    settings: TouchControllerSettingsManager.Settings,
+) {
+    val interpolatedDialSize =
+        remember(settings.scale) {
+            lerp(
+                TouchControllerSettingsManager.MIN_SCALE,
+                TouchControllerSettingsManager.MAX_SCALE,
+                settings.scale,
+            )
+        }
+    val buttonSize = 56.dp * interpolatedDialSize
+
+    Box(
+        modifier =
+            modifier
+                .absolutePadding(
+                    bottom = TouchControllerSettingsManager.MAX_MARGINS.dp * settings.marginY,
+                )
+                .size(buttonSize),
+        contentAlignment = Alignment.Center,
+    ) {
+        LemuroidControlButton(
+            modifier = Modifier.fillMaxSize(),
+            id = Id.Key(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD),
+            icon = R.drawable.button_fast_forward,
+            active = LocalFastForwardEnabled.current,
+        )
+    }
 }

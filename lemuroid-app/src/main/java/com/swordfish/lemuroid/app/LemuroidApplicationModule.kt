@@ -269,6 +269,15 @@ abstract class LemuroidApplicationModule {
         @Provides
         @PerApp
         @JvmStatic
+        fun backupManager(
+            context: Context,
+            directoriesManager: DirectoriesManager,
+            retrogradeDatabase: RetrogradeDatabase,
+        ) = com.swordfish.lemuroid.lib.backup.BackupManager(context, directoriesManager, retrogradeDatabase)
+
+        @Provides
+        @PerApp
+        @JvmStatic
         fun coreManager(
             directoriesManager: DirectoriesManager,
             retrofit: Retrofit,

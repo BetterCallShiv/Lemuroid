@@ -71,6 +71,8 @@ import com.swordfish.lemuroid.app.mobile.feature.search.SearchViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsViewModel
+import com.swordfish.lemuroid.app.mobile.feature.settings.backup.BackupRestoreSettingsScreen
+import com.swordfish.lemuroid.app.mobile.feature.settings.backup.BackupRestoreViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.bios.BiosScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.bios.BiosSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.coreselection.CoresSelectionScreen
@@ -148,6 +150,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
 
     @Inject
     lateinit var settingsManager: SettingsManager
+
+    @Inject
+    lateinit var backupManager: com.swordfish.lemuroid.lib.backup.BackupManager
 
     private val reviewManager = ReviewManager()
 
@@ -525,6 +530,19 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                             saveSyncManager,
                                         ),
                                  ),
+                        )
+                    }
+                    composable(MainRoute.SETTINGS_BACKUP_RESTORE) {
+                        BackupRestoreSettingsScreen(
+                            modifier = Modifier.padding(padding),
+                            viewModel =
+                                viewModel(
+                                    factory =
+                                        BackupRestoreViewModel.Factory(
+                                            application,
+                                            backupManager,
+                                        ),
+                                ),
                         )
                     }
                     composable(MainRoute.GAME_DETAILS) { entry ->

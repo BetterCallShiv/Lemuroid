@@ -10,6 +10,7 @@ object GameScreenLayout {
     const val CONSTRAINTS_RIGHT_CONTAINER = "rightContainer"
     const val CONSTRAINTS_LEFT_PAD = "leftPad"
     const val CONSTRAINTS_RIGHT_PAD = "rightPad"
+    const val CONSTRAINTS_CENTER_PAD = "centerPad"
     const val CONSTRAINTS_GAME_VIEW = "gameView"
     const val CONSTRAINTS_GAME_CONTAINER = "gameContainer"
 
@@ -29,6 +30,7 @@ object GameScreenLayout {
             val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
             val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
             val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
+            val centerPad = createRefFor(CONSTRAINTS_CENTER_PAD)
             val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
             val bottomContainer = createRefFor(CONSTRAINTS_BOTTOM_CONTAINER)
 
@@ -67,6 +69,12 @@ object GameScreenLayout {
                 bottom.linkTo(parent.bottom)
             }
 
+            constrain(centerPad) {
+                absoluteLeft.linkTo(parent.absoluteLeft)
+                absoluteRight.linkTo(parent.absoluteRight)
+                bottom.linkTo(parent.bottom)
+            }
+
             constrain(gameContainer) {
                 absoluteLeft.linkTo(gameView.absoluteLeft)
                 absoluteRight.linkTo(gameView.absoluteRight)
@@ -81,6 +89,7 @@ object GameScreenLayout {
             val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
             val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
             val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
+            val centerPad = createRefFor(CONSTRAINTS_CENTER_PAD)
             val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
 
             val gamePadChain = createHorizontalChain(leftPad, rightPad, chainStyle = ChainStyle.SpreadInside)
@@ -111,6 +120,12 @@ object GameScreenLayout {
                 top.linkTo(parent.top)
             }
 
+            constrain(centerPad) {
+                absoluteLeft.linkTo(parent.absoluteLeft)
+                absoluteRight.linkTo(parent.absoluteRight)
+                bottom.linkTo(parent.bottom)
+            }
+
             constrain(gameContainer) {
                 absoluteLeft.linkTo(gameView.absoluteLeft)
                 absoluteRight.linkTo(gameView.absoluteRight)
@@ -125,6 +140,7 @@ object GameScreenLayout {
             val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
             val leftPad = createRefFor(CONSTRAINTS_LEFT_PAD)
             val rightPad = createRefFor(CONSTRAINTS_RIGHT_PAD)
+            val centerPad = createRefFor(CONSTRAINTS_CENTER_PAD)
             val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
             val leftContainer = createRefFor(CONSTRAINTS_LEFT_CONTAINER)
             val rightContainer = createRefFor(CONSTRAINTS_RIGHT_CONTAINER)
@@ -151,6 +167,12 @@ object GameScreenLayout {
                 top.linkTo(parent.top)
                 bottom.linkTo(parent.bottom)
                 width = Dimension.wrapContent // Takes as much space as needed
+            }
+
+            constrain(centerPad) {
+                absoluteLeft.linkTo(parent.absoluteLeft)
+                absoluteRight.linkTo(parent.absoluteRight)
+                bottom.linkTo(parent.bottom)
             }
 
             constrain(gameContainer) {

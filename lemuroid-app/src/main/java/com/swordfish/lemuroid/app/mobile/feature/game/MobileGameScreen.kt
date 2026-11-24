@@ -1,31 +1,42 @@
 package com.swordfish.lemuroid.app.mobile.feature.game
 
 import android.graphics.RectF
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Height
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.RotateLeft
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +66,7 @@ import com.swordfish.lemuroid.app.shared.settings.HapticFeedbackMode
 import com.swordfish.lemuroid.lib.controller.ControllerConfig
 import com.swordfish.touchinput.controller.R
 import com.swordfish.touchinput.radial.LemuroidPadTheme
+import com.swordfish.touchinput.radial.LocalFastForwardEnabled
 import com.swordfish.touchinput.radial.LocalLemuroidPadTheme
 import com.swordfish.touchinput.radial.sensors.TiltConfiguration
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
@@ -96,6 +108,7 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
         val touchGamePads = currentControllerConfig?.getTouchControllerConfig()
         val leftGamePad = touchGamePads?.leftComposable
         val rightGamePad = touchGamePads?.rightComposable
+        val centerGamePad = touchGamePads?.centerComposable
 
         val hapticFeedbackMode =
             viewModel
@@ -170,7 +183,11 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                         touchControlsVisibleState.value
 
                 if (isVisible) {
-                    CompositionLocalProvider(LocalLemuroidPadTheme provides LemuroidPadTheme()) {
+                    val isFfEnabled = viewModel.isFastForwardEnabled.collectAsState().value
+                    CompositionLocalProvider(
+                        LocalLemuroidPadTheme provides LemuroidPadTheme(),
+                        LocalFastForwardEnabled provides isFfEnabled,
+                    ) {
                         if (!isLandscape) {
                             PadContainer(
                                 modifier = Modifier.layoutId(GameScreenLayout.CONSTRAINTS_BOTTOM_CONTAINER),
@@ -192,6 +209,11 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
                         rightGamePad?.invoke(
                             this,
                             Modifier.layoutId(GameScreenLayout.CONSTRAINTS_RIGHT_PAD),
+                            touchControllerSettings,
+                        )
+                        centerGamePad?.invoke(
+                            this,
+                            Modifier.layoutId(GameScreenLayout.CONSTRAINTS_CENTER_PAD),
                             touchControllerSettings,
                         )
 
@@ -218,6 +240,54 @@ fun MobileGameScreen(viewModel: BaseGameScreenViewModel) {
             ) {
                 CircularProgressIndicator()
             }
+        }
+
+        val showSpeedDialog = viewModel.showFastForwardSpeedDialog.collectAsState().value
+        if (showSpeedDialog) {
+            val currentSpeed = viewModel.getFastForwardSpeed()
+            val speeds = listOf(2, 3, 4, 5)
+            AlertDialog(
+                onDismissRequest = { viewModel.showFastForwardSpeedDialog.value = false },
+                title = { Text(stringResource(com.swordfish.lemuroid.R.string.settings_title_fast_forward_speed)) },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .selectableGroup(),
+                    ) {
+                        speeds.forEach { speed ->
+                            val isSelected = (currentSpeed == speed)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(56.dp)
+                                    .selectable(
+                                        role = Role.RadioButton,
+                                        selected = isSelected,
+                                        onClick = {
+                                            viewModel.updateFastForwardSpeed(speed)
+                                            viewModel.showFastForwardSpeedDialog.value = false
+                                        },
+                                    ),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                RadioButton(
+                                    selected = isSelected,
+                                    onClick = null,
+                                )
+                                Text(
+                                    text = "${speed}x",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    modifier = Modifier.padding(start = 16.dp),
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {},
+            )
         }
 
         com.swordfish.lemuroid.app.shared.retroachievements.AchievementPopupOverlay()

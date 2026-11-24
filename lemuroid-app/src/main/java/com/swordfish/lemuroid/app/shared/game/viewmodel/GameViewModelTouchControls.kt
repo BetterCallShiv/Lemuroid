@@ -123,6 +123,11 @@ class GameViewModelTouchControls(
             onMenuPressed((menuEvent as InputEvent.Button).pressed)
         }
 
+        val ffEvent = events.firstOrNull { it is InputEvent.Button && it.id == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD }
+        if (ffEvent != null) {
+            onFastForwardPressed((ffEvent as InputEvent.Button).pressed)
+        }
+
         events.forEach { event ->
             when (event) {
                 is InputEvent.Button -> {
@@ -153,6 +158,28 @@ class GameViewModelTouchControls(
         } else {
             loadingMenuJob?.cancel()
             loadingMenuJob = null
+        }
+    }
+
+    private var fastForwardJob: Job? = null
+    private var fastForwardLongPressTriggered = false
+
+    private fun onFastForwardPressed(pressed: Boolean) {
+        if (pressed) {
+            fastForwardLongPressTriggered = false
+            fastForwardJob?.cancel()
+            fastForwardJob =
+                scope.launch {
+                    delay(MENU_LOADING_ANIMATION_MILLIS.toLong())
+                    fastForwardLongPressTriggered = true
+                    sideEffects.showFastForwardSpeedDialog()
+                }
+        } else {
+            fastForwardJob?.cancel()
+            fastForwardJob = null
+            if (!fastForwardLongPressTriggered) {
+                sideEffects.toggleFastForward()
+            }
         }
     }
 

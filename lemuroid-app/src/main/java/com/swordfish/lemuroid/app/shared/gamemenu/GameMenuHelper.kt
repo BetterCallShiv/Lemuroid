@@ -116,11 +116,12 @@ object GameMenuHelper {
         saveStateInfo: SaveInfo,
         bitmap: Bitmap?,
     ) {
+        val titleText = saveStateInfo.customTitle ?: screen.context.getString(R.string.game_menu_state, (index + 1).toString())
         screen.addPreference(
             Preference(screen.context).apply {
                 this.key = "pref_game_save_$index"
                 this.summary = getSaveStateDescription(saveStateInfo)
-                this.title = context.getString(R.string.game_menu_state, (index + 1).toString())
+                this.title = titleText
                 this.icon = BitmapDrawable(screen.context.resources, bitmap)
             },
         )
@@ -132,12 +133,13 @@ object GameMenuHelper {
         saveStateInfo: SaveInfo,
         bitmap: Bitmap?,
     ) {
+        val titleText = saveStateInfo.customTitle ?: screen.context.getString(R.string.game_menu_state, (index + 1).toString())
         screen.addPreference(
             Preference(screen.context, null).apply {
                 this.key = "pref_game_load_$index"
                 this.summary = getSaveStateDescription(saveStateInfo)
                 this.isEnabled = saveStateInfo.exists
-                this.title = context.getString(R.string.game_menu_state, (index + 1).toString())
+                this.title = titleText
                 this.icon = BitmapDrawable(screen.context.resources, bitmap)
             },
         )
@@ -147,15 +149,20 @@ object GameMenuHelper {
         activity: Activity?,
         preference: Preference?,
     ): Boolean {
-        return when (preference?.key) {
-            "pref_game_save_0" -> handleSaveAction(activity, 0)
-            "pref_game_save_1" -> handleSaveAction(activity, 1)
-            "pref_game_save_2" -> handleSaveAction(activity, 2)
-            "pref_game_save_3" -> handleSaveAction(activity, 3)
-            "pref_game_load_0" -> handleLoadAction(activity, 0)
-            "pref_game_load_1" -> handleLoadAction(activity, 1)
-            "pref_game_load_2" -> handleLoadAction(activity, 2)
-            "pref_game_load_3" -> handleLoadAction(activity, 3)
+        val key = preference?.key ?: return false
+        if (key.startsWith("pref_game_save_")) {
+            val index = key.removePrefix("pref_game_save_").toIntOrNull()
+            if (index != null) {
+                return handleSaveAction(activity, index)
+            }
+        }
+        if (key.startsWith("pref_game_load_")) {
+            val index = key.removePrefix("pref_game_load_").toIntOrNull()
+            if (index != null) {
+                return handleLoadAction(activity, index)
+            }
+        }
+        return when (key) {
             "pref_game_mute" -> {
                 val currentValue = (preference as SwitchPreference).isChecked
                 val resultIntent =

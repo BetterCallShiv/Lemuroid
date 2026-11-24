@@ -27,6 +27,8 @@ class GameViewModelSideEffects(private val scope: CoroutineScope) {
         data object SaveQuickSave : UiEffect
 
         data object ToggleFastForward : UiEffect
+
+        data object ShowFastForwardSpeedDialog : UiEffect
     }
 
     private val uiEffects = MutableSharedFlow<UiEffect>()
@@ -93,6 +95,14 @@ class GameViewModelSideEffects(private val scope: CoroutineScope) {
         scope.launch {
             withContext(Dispatchers.Main) {
                 uiEffects.emit(UiEffect.ToggleFastForward)
+            }
+        }
+    }
+
+    fun showFastForwardSpeedDialog() {
+        scope.launch {
+            withContext(Dispatchers.Main) {
+                uiEffects.emit(UiEffect.ShowFastForwardSpeedDialog)
             }
         }
     }

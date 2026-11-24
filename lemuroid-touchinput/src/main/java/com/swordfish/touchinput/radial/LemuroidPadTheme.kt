@@ -68,3 +68,5 @@ val LocalLemuroidPadTheme =
     compositionLocalOf<LemuroidPadTheme> {
         error("LemuroidPadTheme is missing")
     }
+
+val LocalFastForwardEnabled = compositionLocalOf { false }

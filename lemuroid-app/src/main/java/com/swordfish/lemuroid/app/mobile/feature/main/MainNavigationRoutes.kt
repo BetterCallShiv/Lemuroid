@@ -102,6 +102,12 @@ enum class MainRoute(
         parent = SETTINGS,
         showBottomNavigation = false,
     ),
+    SETTINGS_BACKUP_RESTORE(
+        route = "settings/backup_restore",
+        titleId = R.string.settings_title_backup_restore,
+        parent = SETTINGS,
+        showBottomNavigation = false,
+    ),
     GAME_DETAILS(
         route = "games/{gameId}",
         titleId = R.string.title_games,

@@ -5,7 +5,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9%2B-purple.svg)](https://kotlinlang.org)
 [![RetroAchievements](https://img.shields.io/badge/RetroAchievements-Supported-gold.svg)](https://retroachievements.org)
 
-**AlphaLemuroid** is an enhanced feature-rich fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) adding missing features like RetroAchievements Support, Game Artwork & Media scraping, Multi-Folder ROM storage, Built-in Cheats, IPS Patching and a Modernized UI.
+**AlphaLemuroid** is an enhanced feature-rich fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) adding missing features like RetroAchievements Support, Game Artwork & Media scraping, Multi-Folder ROM storage, Built-in Cheats, IPS Patching, Full Backup & Restore, Unlimited Save States and a Modernized UI.
 
 ---
 
@@ -115,20 +115,42 @@
 
 ---
 
-### ⚡ 6. Cheats, IPS Patching & Gameplay Tweaks
+### 📦 6. Complete App Backup & Restore
 
-* **Configurable Fast-Forward Speeds:**
-  * Long-press the Fast-Forward row in the in-game pause menu to select 2x, 3x, 4x or 5x.
+* **One-Click Full & Selective Backup:**
+  * Create portable .zip backup archives containing any combination of your data:
+    * **Game Saves (`.srm`):** In-game battery/memory card saves.
+    * **Save States (`.slot*` & metadata):** Full state dumps, custom titles and screenshot preview thumbnails.
+    * **Scraped Offline Media:** Box arts, hero banners, fanarts, logo wheels, screenshots, title screens and gameplay videos.
+    * **Cheats (`.cht`):** Discovered, imported and custom cheat codes.
+    * **Custom Collections:** User-created collections and playlist entries.
+    * **Game Database & Metadata:** Cache of scraped titles, genres, ratings, developer info and play statistics.
+    * **Application Settings:** Core configurations, touch controller layouts and preferences.
+
+---
+
+### ⚡ 7. Cheats, IPS Patching, Save States & Gameplay Tweaks
+
+* **In-Game HUD Fast-Forward Button:**
+  * Dedicated on-screen HUD button (`⏩`) for instant fast-forward toggling without interrupting gameplay:
+  * Single Tap: Instantly toggles Fast-Forward ON / OFF.
+  * Long-Press: Opens the fast-forward speed selector dialog.
   * Configure default speed globally under **Settings → General → Fast-forward speed**.
+
+* **Unlimited Save States & State Management:**
+  * Replaced the fixed 4-slot limitation with support for unlimited dynamic save state slots.
+  * Custom state naming: Rename save states with descriptive titles directly from the menu.
+  * Delete individual save states and thumbnails with instant list refresh.
+  * Clean Material 3 context menu accessible via the 3-dots button (`⋮`) or by long-pressing any state card.
 
 * **Native Cheat Support & Automatic .cht Detection:**
   * Built-in cheat injection for NES, SNES, Game Boy, Game Boy Color and Game Boy Advance.
-  * Automatically detects .cht cheat files in your ROM folder ( e.g. GameName.cht for GameName.zip) as well as any .cht files inside .zip archives.
-  * Import and export standard .cht files.
+  * Automatically detects `.cht` cheat files in your ROM folder (e.g. `GameName.cht` for `GameName.zip`) as well as any `.cht` files inside `.zip` archives.
+  * Import and export standard `.cht` files with live preview before applying.
 
 * **In-Game IPS ROM Patching:**
-  * Built-in IPS patch engine that applies ROM hacks directly without altering your original ROM.
-  * Automatically detects .ips patch files in your ROM folder ( e.g. GameName.ips for GameName.zip) as well as any .ips files inside .zip archives.
+  * Built-in IPS patch engine that applies ROM hacks directly in memory without altering your original ROM file.
+  * Automatically detects `.ips` patch files in your ROM folder (e.g. `GameName.ips` for `GameName.zip`) as well as any `.ips` files inside `.zip` archives.
   * Manage active patches via the pause menu with instant reload support.
 
 * **Playtime Tracking:**
@@ -164,8 +186,7 @@
 
 ## 📋 TODO
 
-- [ ] **Complete App Backup and Restore:** One-click backup and restoration of all user data, game saves, save states, collections, cheats and scraped offline media.
-
+- [ ] **Reverse Support:** On-screen hold-to-rewind button to reverse gameplay.
 - [ ] **Custom Shaders Import:** Support for importing external Libretro shader presets and custom CRT/LCD display filters.
 
 ---
@@ -201,7 +222,7 @@ Build the release APK:
 * **[Swordfish90](https://github.com/Swordfish90)** for the original [Lemuroid](https://github.com/Swordfish90/Lemuroid) and [LibretroDroid](https://github.com/Swordfish90/LibretroDroid) projects.
 * **[RetroAchievements](https://retroachievements.org)** and the `rcheevos` team for their C library.
 * **[Libretro](https://www.libretro.com/)** and core maintainers for cross-platform emulation backends.
-* **[Hasheous](https://hasheous.org/)**, **[ScreenScraper](https://www.screenscraper.fr/)**, and **[IGDB](https://www.igdb.com/)** for ROM identification, metadata, and media assets.
+* **[Hasheous](https://hasheous.org/)**, **[ScreenScraper](https://www.screenscraper.fr/)** and **[IGDB](https://www.igdb.com/)** for ROM identification, metadata and media assets.
 
 ---
 
