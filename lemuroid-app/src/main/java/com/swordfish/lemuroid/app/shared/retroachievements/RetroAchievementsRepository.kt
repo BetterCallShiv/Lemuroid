@@ -105,10 +105,10 @@ class RetroAchievementsRepository(private val context: Context) {
                     try {
                         val form = FormBody.Builder()
                             .add("r", "achievementsets")
-                            .add("m", hash)
-                            .add("v", "2")
                             .add("u", username)
                             .add("t", token)
+                            .add("m", hash)
+                            .add("v", "2")
                             .build()
 
                         val req = Request.Builder()
