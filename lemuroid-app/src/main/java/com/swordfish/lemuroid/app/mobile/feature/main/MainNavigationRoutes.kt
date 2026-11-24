@@ -108,6 +108,12 @@ enum class MainRoute(
         parent = SETTINGS,
         showBottomNavigation = false,
     ),
+    SETTINGS_ABOUT(
+        route = "settings/about",
+        titleId = R.string.settings_category_about,
+        parent = SETTINGS,
+        showBottomNavigation = false,
+    ),
     GAME_DETAILS(
         route = "games/{gameId}",
         titleId = R.string.title_games,

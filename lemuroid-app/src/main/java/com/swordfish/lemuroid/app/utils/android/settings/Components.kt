@@ -167,7 +167,7 @@ private fun SettingsGroupTitleSmall(title: @Composable () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .wrapContentHeight()
-                .padding(16.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 2.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
         val primary = MaterialTheme.colorScheme.primary

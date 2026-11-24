@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.GridView
-import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.BottomAppBarDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -66,7 +65,6 @@ import com.swordfish.lemuroid.app.shared.savesync.SaveSyncWork
 fun MainTopBar(
     currentRoute: MainRoute,
     navController: NavHostController,
-    onHelpPressed: () -> Unit,
     onUpdateQueryString: (String) -> Unit,
     mainUIState: MainViewModel.UiState,
     titleOverride: String? = null,
@@ -91,7 +89,6 @@ fun MainTopBar(
             navController = navController,
             mainUIState = mainUIState,
             titleOverride = titleOverride,
-            onHelpPressed = onHelpPressed,
             onUpdateQueryString = onUpdateQueryString,
             onScrapePlatformPressed = onScrapePlatformPressed,
             onScrapeAllPlatformsPressed = onScrapeAllPlatformsPressed,
@@ -122,7 +119,6 @@ fun LemuroidTopAppBar(
     navController: NavController,
     mainUIState: MainViewModel.UiState,
     titleOverride: String? = null,
-    onHelpPressed: () -> Unit,
     onUpdateQueryString: (String) -> Unit,
     onScrapePlatformPressed: (() -> Unit)? = null,
     onScrapeAllPlatformsPressed: (() -> Unit)? = null,
@@ -228,7 +224,6 @@ fun LemuroidTopAppBar(
                 navController = navController,
                 context = context,
                 saveSyncEnabled = mainUIState.saveSyncEnabled,
-                onHelpPressed = onHelpPressed,
                 operationsInProgress = mainUIState.operationInProgress,
                 onScrapePlatformPressed = onScrapePlatformPressed,
                 onScrapeAllPlatformsPressed = onScrapeAllPlatformsPressed,
@@ -252,7 +247,6 @@ fun LemuroidTopBarActions(
     context: Context,
     saveSyncEnabled: Boolean,
     operationsInProgress: Boolean,
-    onHelpPressed: () -> Unit,
     onScrapePlatformPressed: (() -> Unit)? = null,
     onScrapeAllPlatformsPressed: (() -> Unit)? = null,
     onCancelScrapePlatform: (() -> Unit)? = null,
@@ -380,15 +374,6 @@ fun LemuroidTopBarActions(
                         stringResource(R.string.title_search),
                     )
                 }
-            }
-        } else if (route != MainRoute.SEARCH) {
-            IconButton(
-                onClick = { onHelpPressed() },
-            ) {
-                Icon(
-                    Icons.Outlined.Info,
-                    stringResource(R.string.mobile_settings_help),
-                )
             }
         }
         if (saveSyncEnabled) {

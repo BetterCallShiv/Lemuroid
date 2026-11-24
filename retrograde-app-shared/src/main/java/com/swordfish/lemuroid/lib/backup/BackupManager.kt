@@ -12,8 +12,7 @@ import com.swordfish.lemuroid.lib.scraper.MediaStorageManager
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -257,7 +256,11 @@ class BackupManager(
                         )
                     }
                     userDataCount = exportedUserData.size
-                    val userDataJson = json.encodeToString<List<ExportedGameUserData>>(exportedUserData)
+                    val userDataJson =
+                        json.encodeToString(
+                            ListSerializer(ExportedGameUserData.serializer()),
+                            exportedUserData,
+                        )
                     val udBytes = addTextToZip(userDataJson, BackupManifest.USERDATA_FILE_NAME, zipOut)
                     reportProgress(stepSavesAndData, udBytes)
 
@@ -286,7 +289,11 @@ class BackupManager(
                         )
                     }
                     gameDetailsCount = exportedDetails.size
-                    val detailsJson = json.encodeToString<List<ExportedGameDetails>>(exportedDetails)
+                    val detailsJson =
+                        json.encodeToString(
+                            ListSerializer(ExportedGameDetails.serializer()),
+                            exportedDetails,
+                        )
                     val gdBytes = addTextToZip(detailsJson, BackupManifest.GAMEDETAILS_FILE_NAME, zipOut)
                     reportProgress(stepSavesAndData, gdBytes)
                 }
@@ -309,7 +316,11 @@ class BackupManager(
                         )
                     }
                     cheatCount = exportedCheats.size
-                    val cheatsJson = json.encodeToString<List<ExportedCheat>>(exportedCheats)
+                    val cheatsJson =
+                        json.encodeToString(
+                            ListSerializer(ExportedCheat.serializer()),
+                            exportedCheats,
+                        )
                     val chBytes = addTextToZip(cheatsJson, BackupManifest.CHEATS_FILE_NAME, zipOut)
                     reportProgress(stepSavesAndData, chBytes)
                 }
@@ -341,7 +352,7 @@ class BackupManager(
                         totalUncompressedBytes = totalUncompressedBytes,
                     ),
                 )
-                val manifestJson = json.encodeToString<BackupManifest>(manifest)
+                val manifestJson = json.encodeToString(BackupManifest.serializer(), manifest)
                 addTextToZip(manifestJson, BackupManifest.MANIFEST_FILE_NAME, zipOut)
 
                 onProgress(stepFinalizing, 1.0f, totalBytesTarget, totalBytesTarget)
@@ -362,7 +373,7 @@ class BackupManager(
                 while (entry != null) {
                     if (entry.name == BackupManifest.MANIFEST_FILE_NAME) {
                         val text = zipIn.bufferedReader().readText()
-                        val manifest = json.decodeFromString<BackupManifest>(text)
+                        val manifest = json.decodeFromString(BackupManifest.serializer(), text)
                         return@runCatching InspectedBackupInfo(manifest, fileSizeBytes)
                     }
                     zipIn.closeEntry()
@@ -487,7 +498,10 @@ class BackupManager(
 
             if (!userDataJson.isNullOrEmpty()) {
                 val exportedData = runCatching {
-                    json.decodeFromString<List<ExportedGameUserData>>(userDataJson!!)
+                    json.decodeFromString(
+                        ListSerializer(ExportedGameUserData.serializer()),
+                        userDataJson!!,
+                    )
                 }.getOrDefault(emptyList())
 
                 if (exportedData.isNotEmpty()) {
@@ -523,7 +537,10 @@ class BackupManager(
             }
             if (!gameDetailsJson.isNullOrEmpty()) {
                 val exportedDetails = runCatching {
-                    json.decodeFromString<List<ExportedGameDetails>>(gameDetailsJson!!)
+                    json.decodeFromString(
+                        ListSerializer(ExportedGameDetails.serializer()),
+                        gameDetailsJson!!,
+                    )
                 }.getOrDefault(emptyList())
 
                 if (exportedDetails.isNotEmpty()) {
@@ -566,7 +583,10 @@ class BackupManager(
             }
             if (!cheatsJson.isNullOrEmpty()) {
                 val exportedCheats = runCatching {
-                    json.decodeFromString<List<ExportedCheat>>(cheatsJson!!)
+                    json.decodeFromString(
+                        ListSerializer(ExportedCheat.serializer()),
+                        cheatsJson!!,
+                    )
                 }.getOrDefault(emptyList())
 
                 if (exportedCheats.isNotEmpty()) {
@@ -677,12 +697,12 @@ class BackupManager(
                 }
             }
         }
-        return json.encodeToString<JsonObject>(jsonObject)
+        return json.encodeToString(JsonObject.serializer(), jsonObject)
     }
 
     private fun restoreSettingsFromJson(jsonStr: String): Boolean {
         return runCatching {
-            val jsonObject = json.decodeFromString<JsonObject>(jsonStr)
+            val jsonObject = json.decodeFromString(JsonObject.serializer(), jsonStr)
             val harmonyPrefs = SharedPreferencesHelper.getSharedPreferences(appContext)
             val editor = harmonyPrefs.edit()
 

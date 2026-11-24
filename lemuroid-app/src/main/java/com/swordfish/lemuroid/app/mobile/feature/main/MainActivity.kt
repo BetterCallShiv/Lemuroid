@@ -69,6 +69,7 @@ import com.swordfish.lemuroid.app.mobile.feature.main.navigateToGameDetails
 import com.swordfish.lemuroid.app.mobile.feature.search.SearchScreen
 import com.swordfish.lemuroid.app.mobile.feature.search.SearchViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
+import com.swordfish.lemuroid.app.mobile.feature.settings.about.AboutScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsScreen
 import com.swordfish.lemuroid.app.mobile.feature.settings.advanced.AdvancedSettingsViewModel
 import com.swordfish.lemuroid.app.mobile.feature.settings.backup.BackupRestoreSettingsScreen
@@ -103,7 +104,6 @@ import com.swordfish.lemuroid.lib.bios.BiosManager
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.injection.PerActivity
 import com.swordfish.lemuroid.lib.library.MetaSystemID
-import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -117,7 +117,6 @@ import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.lemuroid.lib.savesync.SaveSyncManager
 import com.swordfish.lemuroid.lib.storage.DirectoriesManager
 import dagger.Provides
-import de.charlex.compose.material3.HtmlText
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.GlobalScope
 import javax.inject.Inject
@@ -188,11 +187,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                     ?.let { MainRoute.findByRoute(it) }
                     ?: MainRoute.HOME
 
-            val infoDialogDisplayed =
-                remember {
-                    mutableStateOf(false)
-                }
-
             var lastDestinationChangeMs by remember { mutableStateOf(0L) }
 
             LaunchedEffect(navBackStackEntry.value?.id) {
@@ -234,10 +228,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
 
             val onGameFavoriteToggle = { game: Game, isFavorite: Boolean ->
                 gameInteractor.onFavoriteToggle(game, isFavorite)
-            }
-
-            val onHelpPressed = {
-                infoDialogDisplayed.value = true
             }
 
             var showBatchScrapeDialog by remember { mutableStateOf(false) }
@@ -337,7 +327,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                         MainTopBar(
                             currentRoute = currentRoute,
                             navController = navController,
-                            onHelpPressed = onHelpPressed,
                             mainUIState = mainUIState,
                             titleOverride = currentSystemTitle,
                             onUpdateQueryString = { mainViewModel.changeQueryString(it) },
@@ -559,6 +548,11 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                 ),
                         )
                     }
+                    composable(MainRoute.SETTINGS_ABOUT) {
+                        AboutScreen(
+                            modifier = Modifier.padding(padding),
+                        )
+                    }
                     composable(MainRoute.GAME_DETAILS) { entry ->
                         val gameId = entry.arguments?.getInt("gameId") ?: return@composable
                         GameDetailScreen(
@@ -619,24 +613,6 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 onClearCustomCoverUri = { game -> gameInteractor.onClearCustomCoverUri(game) },
                 onDeleteGame = { game -> gameInteractor.onDeleteGame(game) },
             )
-
-            if (infoDialogDisplayed.value) {
-                val message =
-                    remember {
-                        val systemFolders =
-                            SystemID.values()
-                                .joinToString(", ") { "<i>${it.dbname}</i>" }
-
-                        getString(R.string.lemuroid_help_content)
-                            .replace("\$SYSTEMS", systemFolders)
-                    }
-
-                AlertDialog(
-                    text = { HtmlText(text = message) },
-                    onDismissRequest = { infoDialogDisplayed.value = false },
-                    confirmButton = { },
-                )
-            }
 
             if (showBatchScrapeDialog && metaSystemForScrape != null) {
                 val meta = metaSystemForScrape!!

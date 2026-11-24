@@ -73,13 +73,21 @@
 -dontnote android.net.http.*
 
 ## Kotlin serialization
--keepattributes *Annotation*, InnerClasses
+-keepattributes *Annotation*, InnerClasses, Signature
 -dontnote kotlinx.serialization.SerializationKt
 -keep,includedescriptorclasses class com.swordfish.lemuroid.**$$serializer { *; }
 -keepclassmembers class com.swordfish.lemuroid.** {
     *** Companion;
 }
 -keepclasseswithmembers class com.swordfish.lemuroid.** {
+    kotlinx.serialization.KSerializer serializer(...);
+}
+-if @kotlinx.serialization.Serializable class com.swordfish.lemuroid.**
+-keepclassmembers class <1> {
+    static <1>$Companion Companion;
+}
+-if @kotlinx.serialization.Serializable class com.swordfish.lemuroid.**
+-keepclasseswithmembers class <1>$Companion {
     kotlinx.serialization.KSerializer serializer(...);
 }
 

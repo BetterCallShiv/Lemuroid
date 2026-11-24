@@ -130,6 +130,24 @@ fun SettingsScreen(
             isSaveSyncSupported = state.isSaveSyncSupported,
             navController = navController,
         )
+        AboutSettings(navController = navController)
+    }
+}
+
+@Composable
+private fun AboutSettings(navController: NavController) {
+    LemuroidCardSettingsGroup(
+        title = { Text(text = stringResource(id = R.string.settings_category_about)) },
+    ) {
+        LemuroidSettingsMenuLink(
+            title = { Text(text = stringResource(id = R.string.settings_title_about)) },
+            subtitle = {
+                Text(
+                    text = stringResource(id = R.string.settings_description_about),
+                )
+            },
+            onClick = { navController.navigateToRoute(MainRoute.SETTINGS_ABOUT) },
+        )
     }
 }
 

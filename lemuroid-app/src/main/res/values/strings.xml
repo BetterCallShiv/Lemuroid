@@ -114,7 +114,7 @@
     <string name="game_context_menu_remove_custom_artwork">Remove custom artwork</string>
     <string name="game_context_menu_delete_rom">Delete ROM</string>
     <string name="dialog_delete_rom_title">Delete ROM?</string>
-    <string name="dialog_delete_rom_message">Permanently delete \"%1$s\" (%2$s) from your device along with its saves, save states, cheats, and scraped media? This cannot be undone.</string>
+    <string name="dialog_delete_rom_message">Permanently delete \"%1$s\" (%2$s) from your device along with its saves, save states, cheats and scraped media? This cannot be undone.</string>
     <string name="dialog_delete_rom_confirm">Delete</string>
     <string name="toast_delete_rom_success">Deleted %1$s</string>
     <string name="toast_delete_rom_partial">Removed %1$s from library (ROM file could not be deleted from storage)</string>
@@ -294,7 +294,7 @@
     <string name="mobile_settings_help">Help</string>
     <string name="mobile_settings_support">Support</string>
     <string name="lemuroid_help_content"><![CDATA[
-        <b>&#8226;How do I use Lemuroid?</b><br/>
+        <b>&#8226;How do I use AlphaLemuroid?</b><br/>
         Copy all your ROMs files into a directory on your device and select it within Lemuroid. This directory is allowed to have subdirectories. After the scan completes you should see your games.<br/><br/>
         <b>&#8226;Why aren\'t my games detected?</b><br/>
         If your games are compressed, try uncompressing them. If this doesn\'t work try putting ROMs into separate directories, one for each system with the following names: $SYSTEMS.
@@ -357,7 +357,7 @@
     <string name="settings_media_storage_summary">%1$s • %2$d files</string>
     <string name="settings_media_storage_clear_all">Clear all media</string>
     <string name="settings_media_storage_clear_confirm_title">Clear all scraped media?</string>
-    <string name="settings_media_storage_clear_confirm_message">This will delete all downloaded box art, banners, screenshots, fanart, and videos (%1$s). Your ROMs, saves, and text metadata will not be affected.</string>
+    <string name="settings_media_storage_clear_confirm_message">This will delete all downloaded box art, banners, screenshots, fanart and videos (%1$s). Your ROMs, saves and text metadata will not be affected.</string>
     <string name="toast_media_cleared">Scraped media cleared</string>
     <string name="game_details_play">Play game</string>
     <string name="scrape_platform_games">Scrape console games</string>
@@ -411,8 +411,8 @@
     <string name="sort_order_recently_added">Recently added</string>
     <string name="sort_order_developer_asc">Developer (A–Z)</string>
     <string name="filter_genre_all">All</string>
-    <string name="search_hint_games">Search title, genre, dev, year, or CRC32</string>
-    <string name="search_hint_game_or_genre">Search title, genre, year, or CRC32</string>
+    <string name="search_hint_games">Search title, genre, dev, year or CRC32</string>
+    <string name="search_hint_game_or_genre">Search title, genre, year or CRC32</string>
 
     <string name="home_continue_playing">Continue playing</string>
     <string name="home_continue_details">Details</string>
@@ -637,5 +637,31 @@
     <string name="backup_restore_summary_media_singular">• 1 media file restored\n</string>
     <string name="backup_restore_summary_media_plural">• %1$d media files restored\n</string>
     <string name="backup_restore_summary_settings">• App settings applied</string>
+
+    <string name="settings_category_about">About</string>
+    <string name="settings_title_about">About AlphaLemuroid</string>
+    <string name="settings_description_about">Credits &amp; license</string>
+    <string name="about_app_name">AlphaLemuroid</string>
+    <string name="about_version_format">v%1$s (%2$d)</string>
+    <string name="about_app_tagline">A fork of Lemuroid with many extra features, improvements and a modern UI.</string>
+    <string name="about_category_help">Help &amp; Legal</string>
+    <string name="about_help_title">Help &amp; ROM Setup Guide</string>
+    <string name="about_help_subtitle">How to organize ROM folders and troubleshoot game scans</string>
+    <string name="about_license_title">Open Source License</string>
+    <string name="about_license_subtitle">GPL-3.0</string>
+    <string name="about_category_developer">Developer</string>
+    <string name="about_author_title">Shivam Raj</string>
+    <string name="about_author_subtitle">\@BetterCallShiv on GitHub</string>
+    <string name="about_source_title">Source Code</string>
+    <string name="about_source_subtitle">github.com/BetterCallShiv/Lemuroid</string>
+    <string name="about_category_credits">Credits &amp; Acknowledgements</string>
+    <string name="about_credit_swordfish_title">Swordfish90</string>
+    <string name="about_credit_swordfish_subtitle">Original Lemuroid &amp; LibretroDroid</string>
+    <string name="about_credit_libretro_title">Libretro</string>
+    <string name="about_credit_libretro_subtitle">Emulation cores &amp; Libretro API</string>
+    <string name="about_credit_ra_title">RetroAchievements</string>
+    <string name="about_credit_ra_subtitle">Achievements &amp; progression tracking</string>
+    <string name="about_credit_metadata_title">Metadata &amp; Artwork</string>
+    <string name="about_credit_metadata_subtitle">ScreenScraper, IGDB &amp; Hasheous</string>
 
 </resources>
