@@ -362,6 +362,23 @@ class RetroAchievementsRepository(private val context: Context) {
             }
 
             if (rawBytes != null && rawBytes.isNotEmpty()) {
+                val consoleId = RetroAchievementsManager.getConsoleId(systemId)
+                if (consoleId > 0) {
+                    try {
+                        val nativeHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
+                            consoleId,
+                            "",
+                            rawBytes
+                        )
+                        if (!nativeHash.isNullOrEmpty()) {
+                            Timber.d("RetroAchievements: Native rcheevos hash generated: $nativeHash for console $consoleId")
+                            result.add(nativeHash)
+                        }
+                    } catch (t: Throwable) {
+                        Timber.w(t, "RetroAchievements: Failed to generate native rcheevos hash")
+                    }
+                }
+
                 val md = MessageDigest.getInstance("MD5")
                 val isNesHeader = rawBytes.size > 16 &&
                     rawBytes[0] == 0x4E.toByte() &&
