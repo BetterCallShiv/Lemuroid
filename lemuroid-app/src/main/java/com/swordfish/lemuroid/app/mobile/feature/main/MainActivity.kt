@@ -288,12 +288,16 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
 
             val onScrapePlatformPressed = {
                 val metaSystemIdArg = navBackStackEntry.value?.arguments?.getString("metaSystemId")
-                val meta = runCatching {
-                    MetaSystemID.valueOf(metaSystemIdArg ?: "")
-                }.getOrNull()
-                if (meta != null) {
-                    metaSystemForScrape = meta
-                    showBatchScrapeDialog = true
+                if (metaSystemIdArg == GamesViewModel.ALL_SYSTEMS_ID) {
+                    showBatchScrapeAllDialog = true
+                } else {
+                    val meta = runCatching {
+                        MetaSystemID.valueOf(metaSystemIdArg ?: "")
+                    }.getOrNull()
+                    if (meta != null) {
+                        metaSystemForScrape = meta
+                        showBatchScrapeDialog = true
+                    }
                 }
             }
 
@@ -314,10 +318,14 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
             val currentSystemTitle = remember(currentRoute, navBackStackEntry.value) {
                 if (currentRoute == MainRoute.SYSTEM_GAMES) {
                     val metaSystemIdArg = navBackStackEntry.value?.arguments?.getString("metaSystemId")
-                    runCatching { MetaSystemID.valueOf(metaSystemIdArg ?: "") }
-                        .getOrNull()
-                        ?.titleResId
-                        ?.let { getString(it) }
+                    if (metaSystemIdArg == GamesViewModel.ALL_SYSTEMS_ID) {
+                        getString(R.string.system_all_games_title)
+                    } else {
+                        runCatching { MetaSystemID.valueOf(metaSystemIdArg ?: "") }
+                            .getOrNull()
+                            ?.titleResId
+                            ?.let { getString(it) }
+                    }
                 } else {
                     null
                 }
@@ -434,7 +442,13 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                         )
                     }
                     composable(MainRoute.SYSTEM_GAMES) { entry ->
-                        val metaSystemId = entry.arguments?.getString("metaSystemId")
+                        val metaSystemIdArg = entry.arguments?.getString("metaSystemId")
+                        val metaSystem =
+                            if (metaSystemIdArg == GamesViewModel.ALL_SYSTEMS_ID) {
+                                null
+                            } else {
+                                MetaSystemID.valueOf(metaSystemIdArg!!)
+                            }
                         GamesScreen(
                             modifier = Modifier.padding(padding),
                             viewModel =
@@ -442,7 +456,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                     factory =
                                         GamesViewModel.Factory(
                                             retrogradeDb,
-                                            MetaSystemID.valueOf(metaSystemId!!),
+                                            metaSystem,
                                         ),
                                 ),
                             searchQuery = if (isSystemSearchActive) systemSearchQuery else "",

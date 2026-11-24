@@ -152,6 +152,7 @@ fun HomeScreen(
             permissionsLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         },
         onEnableMicrophoneClicked = { permissionsLauncher.launch(Manifest.permission.RECORD_AUDIO) },
+        onDismissMicrophoneClicked = { viewModel.dismissMicrophoneBanner() },
         onSetDirectoryClicked = { viewModel.changeLocalStorageFolder(context) },
         onCreateCollection = { viewModel.createCollection(it) },
         onRenameCollection = { col, newName -> viewModel.renameCollection(col, newName) },
@@ -172,6 +173,7 @@ private fun HomeScreenContent(
     onOpenCoreSelection: () -> Unit,
     onEnableNotificationsClicked: () -> Unit,
     onEnableMicrophoneClicked: () -> Unit,
+    onDismissMicrophoneClicked: () -> Unit,
     onSetDirectoryClicked: () -> Unit,
     onCreateCollection: (String) -> Unit,
     onRenameCollection: (GameCollection, String) -> Unit,
@@ -213,7 +215,9 @@ private fun HomeScreenContent(
                 titleId = R.string.home_microphone_title,
                 messageId = R.string.home_microphone_message,
                 actionId = R.string.home_microphone_action,
+                dismissActionId = R.string.home_microphone_dismiss,
                 onAction = onEnableMicrophoneClicked,
+                onDismiss = onDismissMicrophoneClicked,
             )
         }
         AnimatedVisibility(state.showDesmumeDeprecatedCard) {
@@ -1321,8 +1325,10 @@ private fun HomeNotification(
     titleId: Int,
     messageId: Int,
     actionId: Int,
+    dismissActionId: Int? = null,
     enabled: Boolean = true,
     onAction: () -> Unit = { },
+    onDismiss: (() -> Unit)? = null,
 ) {
     ElevatedCard(
         modifier =
@@ -1345,12 +1351,22 @@ private fun HomeNotification(
                 text = stringResource(messageId),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            OutlinedButton(
+            Row(
                 modifier = Modifier.align(Alignment.End),
-                onClick = onAction,
-                enabled = enabled,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(stringResource(id = actionId))
+                if (dismissActionId != null && onDismiss != null) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(id = dismissActionId))
+                    }
+                }
+                OutlinedButton(
+                    onClick = onAction,
+                    enabled = enabled,
+                ) {
+                    Text(stringResource(id = actionId))
+                }
             }
         }
     }

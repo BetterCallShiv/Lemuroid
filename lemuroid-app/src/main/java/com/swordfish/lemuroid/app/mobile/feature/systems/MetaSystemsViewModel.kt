@@ -10,6 +10,22 @@ import com.swordfish.lemuroid.lib.library.metaSystemID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
+sealed interface MetaSystemGridItem {
+    val key: String
+
+    data class AllSystems(
+        val totalCount: Int,
+    ) : MetaSystemGridItem {
+        override val key: String = "ALL_SYSTEMS"
+    }
+
+    data class SingleSystem(
+        val info: MetaSystemInfo,
+    ) : MetaSystemGridItem {
+        override val key: String = info.metaSystem.name
+    }
+}
+
 class MetaSystemsViewModel(retrogradeDb: RetrogradeDatabase, appContext: Context) : ViewModel() {
     class Factory(
         val retrogradeDb: RetrogradeDatabase,
@@ -20,16 +36,24 @@ class MetaSystemsViewModel(retrogradeDb: RetrogradeDatabase, appContext: Context
         }
     }
 
-    val availableMetaSystems: Flow<List<MetaSystemInfo>> =
+    val availableMetaSystems: Flow<List<MetaSystemGridItem>> =
         retrogradeDb.gameDao()
             .selectSystemsWithCount()
             .map { systemCounts ->
-                systemCounts.asSequence()
-                    .filter { (_, count) -> count > 0 }
-                    .map { (systemId, count) -> GameSystem.findById(systemId).metaSystemID() to count }
-                    .groupBy { (metaSystemId, _) -> metaSystemId }
-                    .map { (metaSystemId, counts) -> MetaSystemInfo(metaSystemId, counts.sumBy { it.second }) }
-                    .sortedBy { it.getName(appContext) }
-                    .toList()
+                val systemInfos =
+                    systemCounts.asSequence()
+                        .filter { (_, count) -> count > 0 }
+                        .map { (systemId, count) -> GameSystem.findById(systemId).metaSystemID() to count }
+                        .groupBy { (metaSystemId, _) -> metaSystemId }
+                        .map { (metaSystemId, counts) -> MetaSystemInfo(metaSystemId, counts.sumOf { it.second }) }
+                        .sortedBy { it.getName(appContext) }
+                        .toList()
+
+                if (systemInfos.isEmpty()) {
+                    emptyList()
+                } else {
+                    val allItem = MetaSystemGridItem.AllSystems(totalCount = systemInfos.sumOf { it.count })
+                    listOf(allItem) + systemInfos.map { MetaSystemGridItem.SingleSystem(it) }
+                }
             }
 }

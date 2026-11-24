@@ -127,6 +127,7 @@
     <string name="home_microphone_title">Enable microphone</string>
     <string name="home_microphone_message">Nintendo DS games can use the microphone to provide some functionalities.</string>
     <string name="home_microphone_action">Enable</string>
+    <string name="home_microphone_dismiss">Dismiss</string>
 
     <string name="home_empty_title">Select ROMs directory</string>
     <string name="home_empty_message">Lemuroid needs to scan a directory containing ROM files.\nThis might take up to a few minutes.</string>
@@ -260,6 +261,8 @@
     <string name="dialog_saf_not_found">This device does not support the StorageAccessFramework file picker. Please manually copy uncompressed ROM files into %1$s and hit Rescan.</string>
 
     <string name="system_grid_details">%1$s games</string>
+    <string name="system_all_title">All Games</string>
+    <string name="system_all_games_title">All Games</string>
 
     <string name="tv_folder_picker_title">Select ROMs Directory</string>
     <string name="tv_folder_picker_action_choose">Select</string>
@@ -385,7 +388,7 @@
     <string name="game_details_filename">Filename</string>
     <string name="game_details_rom_size">Size</string>
     <string name="game_details_crc32">CRC32</string>
-    <string name="game_details_ra_game_id">RetroAchievements ID</string>
+    <string name="game_details_ra_game_id">RA Game ID</string>
     <string name="game_details_last_played">Last played</string>
     <string name="game_details_last_played_never">Never</string>
     <string name="game_details_playtime">Playtime</string>
@@ -516,7 +519,7 @@
     <string name="settings_desc_retroachievements_hardcore">Disables save states, rewind and cheats</string>
     <string name="dialog_enter_username">Enter RetroAchievements Username</string>
     <string name="ra_achievement_unlocked">ACHIEVEMENT UNLOCKED</string>
-    <string name="ra_banner_category">RETROACHIEVEMENTS</string>
+    <string name="ra_banner_category">ACHIEVEMENTS</string>
     <string name="ra_achievements_summary_unlocked">%1$d of %2$d Unlocked (%3$d/%4$d pts)</string>
     <string name="ra_achievements_summary_available">%1$d Achievements Available (%2$d pts)</string>
     <string name="ra_game_mastered">Mastery! All achievements completed!</string>

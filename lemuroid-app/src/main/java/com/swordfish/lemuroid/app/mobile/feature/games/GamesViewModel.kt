@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.lib.library.MetaSystemID
+import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.dao.GameListItem
 import kotlinx.coroutines.Dispatchers
@@ -20,11 +21,11 @@ import kotlinx.coroutines.flow.stateIn
 
 class GamesViewModel(
     private val retrogradeDb: RetrogradeDatabase,
-    initialMetaSystem: MetaSystemID,
+    initialMetaSystem: MetaSystemID?,
 ) : ViewModel() {
     class Factory(
         private val retrogradeDb: RetrogradeDatabase,
-        private val initialMetaSystem: MetaSystemID,
+        private val initialMetaSystem: MetaSystemID?,
     ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             return GamesViewModel(retrogradeDb, initialMetaSystem) as T
@@ -48,7 +49,10 @@ class GamesViewModel(
         sortOrder.value = order
     }
 
-    private val systemDbNames = metaSystemId.map { metaSystem -> metaSystem.systemIDs.map { it.dbname } }
+    private val systemDbNames =
+        metaSystemId.map { metaSystem ->
+            metaSystem?.systemIDs?.map { it.dbname } ?: SystemID.values().map { it.dbname }
+        }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val availableGenres: StateFlow<List<String>> =
@@ -127,6 +131,7 @@ class GamesViewModel(
     )
 
     companion object {
+        const val ALL_SYSTEMS_ID = "ALL"
         private val GENRE_SPLIT_REGEX = Regex("[,|/•]")
     }
 }

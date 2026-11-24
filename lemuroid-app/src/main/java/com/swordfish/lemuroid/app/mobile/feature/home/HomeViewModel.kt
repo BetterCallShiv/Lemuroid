@@ -19,6 +19,7 @@ import com.swordfish.lemuroid.lib.library.db.dao.SystemCount
 import com.swordfish.lemuroid.lib.library.db.entity.CollectionWithGames
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.library.db.entity.GameCollection
+import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.lemuroid.lib.scraper.MediaStorageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -44,6 +45,7 @@ class HomeViewModel(
         const val CAROUSEL_MAX_ITEMS = 10
         const val TOP_RATED_POOL_SIZE = 50
         const val DEBOUNCE_TIME = 100L
+        private const val PREF_MICROPHONE_BANNER_DISMISSED = "home_microphone_banner_dismissed"
     }
 
     class Factory(
@@ -101,13 +103,21 @@ class HomeViewModel(
         val ratingsByGameId: Map<Int, Float>,
     )
 
+    private val sharedPreferences = SharedPreferencesHelper.getSharedPreferences(appContext)
     private val mediaStorageManager = MediaStorageManager(appContext)
     private val mediaStatsState = MutableStateFlow(MediaStorageManager.MediaStorageStats())
     private val discoveryShuffleSeed = MutableStateFlow(0)
     private val topRatedShuffleSeed = MutableStateFlow(0)
     private val microphonePermissionEnabledState = MutableStateFlow(true)
+    private val microphoneBannerDismissedState =
+        MutableStateFlow(sharedPreferences.getBoolean(PREF_MICROPHONE_BANNER_DISMISSED, false))
     private val notificationsPermissionEnabledState = MutableStateFlow(true)
     private val uiStates = MutableStateFlow(UIState())
+
+    fun dismissMicrophoneBanner() {
+        microphoneBannerDismissedState.value = true
+        sharedPreferences.edit().putBoolean(PREF_MICROPHONE_BANNER_DISMISSED, true).apply()
+    }
 
     fun getViewStates(): Flow<UIState> {
         return uiStates
@@ -329,9 +339,12 @@ class HomeViewModel(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun microphoneNotification(db: RetrogradeDatabase): Flow<Boolean> {
-        return microphonePermissionEnabledState
-            .flatMapLatest { isMicrophoneEnabled ->
-                if (isMicrophoneEnabled) {
+        return combine(
+            microphonePermissionEnabledState,
+            microphoneBannerDismissedState,
+        ) { isMicrophoneEnabled, isDismissed -> isMicrophoneEnabled || isDismissed }
+            .flatMapLatest { shouldHide ->
+                if (shouldHide) {
                     flowOf(false)
                 } else {
                     combine(
