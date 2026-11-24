@@ -450,7 +450,6 @@
     <string name="game_details_loading_media">Loading media &amp; screenshots…</string>
     <string name="game_details_source">Source</string>
     <string name="game_details_last_updated">Last updated</string>
-    <string name="game_details_video_playing">● PLAYING</string>
     <string name="game_details_video_retry">⚠ RETRY VIDEO</string>
     <string name="game_details_video_gameplay">▶ GAMEPLAY VIDEO</string>
 
