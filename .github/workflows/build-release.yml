@@ -2,6 +2,19 @@ name: Build Release APKs
 
 on:
   workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publish standalone APKs directly to GitHub Releases'
+        required: true
+        type: boolean
+        default: true
+      release_tag:
+        description: 'Release Tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -47,8 +60,16 @@ jobs:
         if: always()
         run: rm -f "$GITHUB_WORKSPACE/release.jks"
 
-      - name: Upload Release APKs
-        uses: actions/upload-artifact@v4
+      - name: List Generated APKs
+        run: |
+          ls -la lemuroid-app/build/outputs/apk/alphaFreeBundle/release/
+
+      - name: Publish Standalone APKs to GitHub Release
+        if: ${{ inputs.create_release }}
+        uses: softprops/action-gh-release@v2
         with:
-          name: AlphaLemuroid-v1.0.0-Release-APKs
-          path: lemuroid-app/build/outputs/apk/alphaFreeBundle/release/*.apk
+          tag_name: ${{ inputs.release_tag }}
+          name: AlphaLemuroid ${{ inputs.release_tag }}
+          draft: false
+          prerelease: false
+          files: lemuroid-app/build/outputs/apk/alphaFreeBundle/release/*.apk
