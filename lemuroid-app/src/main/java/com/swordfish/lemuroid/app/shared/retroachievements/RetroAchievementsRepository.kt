@@ -81,6 +81,10 @@ class RetroAchievementsRepository(private val context: Context) {
             crc32?.takeIf { it.isNotBlank() },
         )
 
+        val username = prefs.username
+        val token = prefs.token
+        val hasCredentials = username.isNotBlank() && token.isNotBlank()
+
         var gameId = prefs.getCachedGameId(*keys.toTypedArray())
 
         if (gameId != null && gameId > 0) {
@@ -91,9 +95,86 @@ class RetroAchievementsRepository(private val context: Context) {
         }
 
         if (gameId == null || gameId <= 0) {
-            gameId = resolveGameIdFromRom(game)
-            if (gameId != null && gameId > 0) {
-                prefs.setCachedGameId(keys, gameId)
+            val uri = android.net.Uri.parse(game.fileUri)
+            val hashes = computeRomMd5Hashes(uri, game.fileName, game.systemId)
+            Timber.d("RetroAchievements: Computed ROM hashes for '${game.title}': $hashes")
+
+            for (hash in hashes) {
+
+                if (hasCredentials) {
+                    try {
+                        val form = FormBody.Builder()
+                            .add("r", "achievementsets")
+                            .add("m", hash)
+                            .add("v", "2")
+                            .add("u", username)
+                            .add("t", token)
+                            .build()
+
+                        val req = Request.Builder()
+                            .url("https://retroachievements.org/dorequest.php")
+                            .post(form)
+                            .build()
+
+                        val body = client.newCall(req).execute().use { resp ->
+                            if (resp.isSuccessful) resp.body?.string() else null
+                        }
+
+                        if (!body.isNullOrEmpty()) {
+                            val root = JSONObject(body)
+                            if (root.optBoolean("Success", false)) {
+                                val resolvedId = root.optInt(
+                                    "GameId",
+                                    root.optInt("GameID", root.optJSONObject("Game")?.optInt("ID", 0) ?: 0)
+                                )
+                                if (resolvedId > 0) {
+                                    Timber.i("RetroAchievements: Resolved game ID $resolvedId using achievementsets and hash $hash")
+                                    gameId = resolvedId
+                                    prefs.setCachedGameId(keys, resolvedId)
+
+                                    val unlockedMap = mutableMapOf<Int, Long>()
+                                    val hardcoreSet = mutableSetOf<Int>()
+                                    fetchUserUnlocks(resolvedId, username, token, unlockedMap, hardcoreSet)
+
+                                    val parsed = parseAchievementsJson(resolvedId, body, unlockedMap, hardcoreSet)
+                                    if (parsed != null && parsed.totalCount > 0) {
+                                        saveToDiskCache(resolvedId, body, unlockedMap, hardcoreSet)
+                                        emit(AchievementsUiState.Success(parsed))
+                                        return@flow
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Timber.w(e, "RetroAchievements: achievementsets request failed for hash $hash")
+                    }
+                }
+                try {
+                    val form = FormBody.Builder()
+                        .add("r", "gameid")
+                        .add("m", hash)
+                        .build()
+                    val req = Request.Builder()
+                        .url("https://retroachievements.org/dorequest.php")
+                        .post(form)
+                        .build()
+                    val id = client.newCall(req).execute().use { resp ->
+                        if (resp.isSuccessful) {
+                            val body = resp.body?.string() ?: ""
+                            val json = JSONObject(body)
+                            val gid = json.optInt("GameID", json.optString("GameID", "0").toIntOrNull() ?: 0)
+                            if (gid > 0) gid else null
+                        } else null
+                    }
+                    if (id != null && id > 0) {
+                        Timber.i("RetroAchievements: Resolved game ID $id using gameid and hash $hash")
+                        gameId = id
+                        prefs.setCachedGameId(keys, id)
+                        break
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e, "RetroAchievements: gameid request failed for hash $hash")
+                }
             }
         }
 
@@ -102,12 +183,7 @@ class RetroAchievementsRepository(private val context: Context) {
             emit(AchievementsUiState.NoAchievements)
             return@flow
         }
-
         try {
-            val username = prefs.username
-            val token = prefs.token
-            val hasCredentials = username.isNotBlank() && token.isNotBlank()
-
             val patchForm = FormBody.Builder()
                 .add("r", "patch")
                 .add("g", gameId.toString())
@@ -130,51 +206,8 @@ class RetroAchievementsRepository(private val context: Context) {
 
             val unlockedMap = mutableMapOf<Int, Long>()
             val hardcoreSet = mutableSetOf<Int>()
-
             if (hasCredentials) {
-                try {
-                    val sessionForm = FormBody.Builder()
-                        .add("r", "startsession")
-                        .add("g", gameId.toString())
-                        .add("u", username)
-                        .add("t", token)
-                        .build()
-
-                    val sessionRequest = Request.Builder()
-                        .url("https://retroachievements.org/dorequest.php")
-                        .post(sessionForm)
-                        .build()
-
-                    client.newCall(sessionRequest).execute().use { resp ->
-                        if (resp.isSuccessful) {
-                            val unlockJson = JSONObject(resp.body?.string() ?: "{}")
-                            val unlocksArr = unlockJson.optJSONArray("Unlocks") ?: unlockJson.optJSONArray("UserUnlocks")
-                            if (unlocksArr != null) {
-                                for (i in 0 until unlocksArr.length()) {
-                                    val item = unlocksArr.optJSONObject(i)
-                                    if (item != null) {
-                                        val id = item.optInt("ID", 0)
-                                        val whenTs = item.optLong("When", 0L)
-                                        if (id > 0) unlockedMap[id] = whenTs
-                                    } else {
-                                        val id = unlocksArr.optInt(i, 0)
-                                        if (id > 0) unlockedMap[id] = 0L
-                                    }
-                                }
-                            }
-                            val hardcoreArr = unlockJson.optJSONArray("HardcoreUnlocks")
-                            if (hardcoreArr != null) {
-                                for (i in 0 until hardcoreArr.length()) {
-                                    val item = hardcoreArr.optJSONObject(i)
-                                    val id = item?.optInt("ID", 0) ?: hardcoreArr.optInt(i, 0)
-                                    if (id > 0) hardcoreSet.add(id)
-                                }
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Timber.w(e, "RetroAchievements: Could not fetch user unlocks for game $gameId")
-                }
+                fetchUserUnlocks(gameId, username, token, unlockedMap, hardcoreSet)
             }
 
             val parsed = parseAchievementsJson(gameId, patchBody, unlockedMap, hardcoreSet)
@@ -195,6 +228,58 @@ class RetroAchievementsRepository(private val context: Context) {
         }
     }.flowOn(Dispatchers.IO)
 
+    private fun fetchUserUnlocks(
+        gameId: Int,
+        username: String,
+        token: String,
+        unlockedMap: MutableMap<Int, Long>,
+        hardcoreSet: MutableSet<Int>,
+    ) {
+        try {
+            val sessionForm = FormBody.Builder()
+                .add("r", "startsession")
+                .add("g", gameId.toString())
+                .add("u", username)
+                .add("t", token)
+                .build()
+
+            val sessionRequest = Request.Builder()
+                .url("https://retroachievements.org/dorequest.php")
+                .post(sessionForm)
+                .build()
+
+            client.newCall(sessionRequest).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val unlockJson = JSONObject(resp.body?.string() ?: "{}")
+                    val unlocksArr = unlockJson.optJSONArray("Unlocks") ?: unlockJson.optJSONArray("UserUnlocks")
+                    if (unlocksArr != null) {
+                        for (i in 0 until unlocksArr.length()) {
+                            val item = unlocksArr.optJSONObject(i)
+                            if (item != null) {
+                                val id = item.optInt("ID", 0)
+                                val whenTs = item.optLong("When", 0L)
+                                if (id > 0) unlockedMap[id] = whenTs
+                            } else {
+                                val id = unlocksArr.optInt(i, 0)
+                                if (id > 0) unlockedMap[id] = 0L
+                            }
+                        }
+                    }
+                    val hardcoreArr = unlockJson.optJSONArray("HardcoreUnlocks")
+                    if (hardcoreArr != null) {
+                        for (i in 0 until hardcoreArr.length()) {
+                            val item = hardcoreArr.optJSONObject(i)
+                            val id = item?.optInt("ID", 0) ?: hardcoreArr.optInt(i, 0)
+                            if (id > 0) hardcoreSet.add(id)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "RetroAchievements: Could not fetch user unlocks for game $gameId")
+        }
+    }
+
     private fun parseAchievementsJson(
         gameId: Int,
         jsonString: String,
@@ -204,8 +289,11 @@ class RetroAchievementsRepository(private val context: Context) {
         return try {
             val root = JSONObject(jsonString)
             val patchData = root.optJSONObject("PatchData") ?: root
-            val title = patchData.optString("Title", root.optString("Title", "Game #$gameId"))
-            val iconPath = patchData.optString("ImageIcon", root.optString("ImageIcon", ""))
+            val gameObj = root.optJSONObject("Game")
+            val title = gameObj?.optString("Title")
+                ?: patchData.optString("Title", root.optString("Title", "Game #$gameId"))
+            val iconPath = gameObj?.optString("ImageIcon")
+                ?: patchData.optString("ImageIcon", root.optString("ImageIcon", ""))
             val badgeIconUrl = if (iconPath.startsWith("http")) {
                 iconPath
             } else if (iconPath.isNotBlank()) {
@@ -215,20 +303,49 @@ class RetroAchievementsRepository(private val context: Context) {
             }
 
             val achievementsList = mutableListOf<AchievementDetail>()
-            val achievementsObj = patchData.optJSONObject("Achievements") ?: root.optJSONObject("Achievements")
-            val achievementsArr = patchData.optJSONArray("Achievements") ?: root.optJSONArray("Achievements")
 
-            if (achievementsObj != null) {
-                val keys = achievementsObj.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val item = achievementsObj.optJSONObject(key) ?: continue
-                    parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+            val setsArr = root.optJSONArray("AchievementSets")
+                ?: root.optJSONArray("Sets")
+                ?: patchData.optJSONArray("AchievementSets")
+                ?: patchData.optJSONArray("Sets")
+
+            if (setsArr != null && setsArr.length() > 0) {
+                for (s in 0 until setsArr.length()) {
+                    val setObj = setsArr.optJSONObject(s) ?: continue
+                    val setAchievementsObj = setObj.optJSONObject("Achievements")
+                    val setAchievementsArr = setObj.optJSONArray("Achievements")
+                    if (setAchievementsObj != null) {
+                        val keys = setAchievementsObj.keys()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            val item = setAchievementsObj.optJSONObject(key) ?: continue
+                            parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                        }
+                    } else if (setAchievementsArr != null) {
+                        for (i in 0 until setAchievementsArr.length()) {
+                            val item = setAchievementsArr.optJSONObject(i) ?: continue
+                            parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                        }
+                    }
                 }
-            } else if (achievementsArr != null) {
-                for (i in 0 until achievementsArr.length()) {
-                    val item = achievementsArr.optJSONObject(i) ?: continue
-                    parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+            }
+
+            if (achievementsList.isEmpty()) {
+                val achievementsObj = patchData.optJSONObject("Achievements") ?: root.optJSONObject("Achievements")
+                val achievementsArr = patchData.optJSONArray("Achievements") ?: root.optJSONArray("Achievements")
+
+                if (achievementsObj != null) {
+                    val keys = achievementsObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val item = achievementsObj.optJSONObject(key) ?: continue
+                        parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                    }
+                } else if (achievementsArr != null) {
+                    for (i in 0 until achievementsArr.length()) {
+                        val item = achievementsArr.optJSONObject(i) ?: continue
+                        parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                    }
                 }
             }
 
@@ -236,7 +353,7 @@ class RetroAchievementsRepository(private val context: Context) {
                 return null
             }
 
-            val sorted = achievementsList.sortedWith(
+            val sorted = achievementsList.distinctBy { it.id }.sortedWith(
                 compareByDescending<AchievementDetail> { it.isUnlocked }
                     .thenBy { it.id }
             )
@@ -267,25 +384,28 @@ class RetroAchievementsRepository(private val context: Context) {
         hardcoreSet: Set<Int>,
     ): AchievementDetail? {
         val flags = item.optInt("Flags", 3)
-        if (flags != 3) {
+        if (flags != 3 && flags != 0) {
             return null
         }
 
-        val id = item.optInt("ID", item.optString("ID", "0").toIntOrNull() ?: 0)
+        val id = item.optInt("ID", item.optInt("Id", item.optString("ID", "0").toIntOrNull() ?: 0))
         if (id == 0) return null
         val title = item.optString("Title", "Achievement #$id")
         val desc = item.optString("Description", "")
         val points = item.optInt("Points", item.optString("Points", "0").toIntOrNull() ?: 0)
-        val badgeName = item.optString("BadgeName", "")
+        val badgeName = item.optString("BadgeName", item.optString("Badge", ""))
         val badgeUrl = if (badgeName.isNotBlank()) {
-            "https://media.retroachievements.org/Badge/$badgeName.png"
+            if (badgeName.startsWith("http")) badgeName else "https://media.retroachievements.org/Badge/$badgeName.png"
         } else {
             ""
         }
 
-        val unlockTimestamp = unlockedMap[id]
-        val isUnlocked = unlockTimestamp != null
-        val isHardcore = hardcoreSet.contains(id)
+        val unlockTimestamp = unlockedMap[id] ?: run {
+            val dateEarned = item.optLong("DateEarned", 0L)
+            if (dateEarned > 0) dateEarned else null
+        }
+        val isUnlocked = unlockTimestamp != null || item.optInt("Achieved", 0) == 1
+        val isHardcore = hardcoreSet.contains(id) || item.optInt("HardcoreAchieved", 0) == 1
         val formattedDate = unlockTimestamp?.takeIf { it > 0 }?.let { ts ->
             try {
                 SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(ts * 1000L))
@@ -306,37 +426,27 @@ class RetroAchievementsRepository(private val context: Context) {
         )
     }
 
-    private fun resolveGameIdFromRom(game: Game): Int? {
-        return try {
-            val uri = android.net.Uri.parse(game.fileUri)
-            val hashes = computeRomMd5Hashes(uri, game.fileName, game.systemId)
-            Timber.d("RetroAchievements: Computed ROM MD5 hashes for '${game.title}': $hashes")
-
-            for (hash in hashes) {
-                val url = "https://retroachievements.org/dorequest.php?r=gameid&m=$hash"
-                val req = Request.Builder().url(url).build()
-                val id = client.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        val body = resp.body?.string() ?: ""
-                        val json = JSONObject(body)
-                        val gameId = json.optInt("GameID", json.optString("GameID", "0").toIntOrNull() ?: 0)
-                        if (gameId > 0) gameId else null
-                    } else null
-                }
-                if (id != null && id > 0) {
-                    Timber.i("RetroAchievements: Successfully resolved game ID $id for '${game.title}' using hash $hash")
-                    return id
-                }
-            }
-            null
-        } catch (e: Exception) {
-            Timber.w(e, "RetroAchievements: ROM hash resolution error for ${game.title}")
-            null
-        }
-    }
-
     private fun computeRomMd5Hashes(uri: android.net.Uri, fileName: String, systemId: String): List<String> {
         val result = mutableListOf<String>()
+        val consoleId = RetroAchievementsManager.getConsoleId(systemId)
+
+        val filePath = if (uri.scheme == "file") uri.path ?: "" else if (uri.toString().startsWith("/")) uri.toString() else ""
+        if (filePath.isNotEmpty() && File(filePath).exists() && consoleId > 0) {
+            try {
+                val nativeHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
+                    consoleId,
+                    filePath,
+                    null
+                )
+                if (!nativeHash.isNullOrEmpty()) {
+                    Timber.d("RetroAchievements: Native rcheevos hash generated from file: $nativeHash for console $consoleId")
+                    result.add(nativeHash)
+                }
+            } catch (t: Throwable) {
+                Timber.w(t, "RetroAchievements: Failed to generate native hash from file path")
+            }
+        }
+
         val isZipped = fileName.endsWith(".zip", ignoreCase = true)
 
         try {
@@ -362,7 +472,6 @@ class RetroAchievementsRepository(private val context: Context) {
             }
 
             if (rawBytes != null && rawBytes.isNotEmpty()) {
-                val consoleId = RetroAchievementsManager.getConsoleId(systemId)
                 if (consoleId > 0) {
                     try {
                         val nativeHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
@@ -371,15 +480,14 @@ class RetroAchievementsRepository(private val context: Context) {
                             rawBytes
                         )
                         if (!nativeHash.isNullOrEmpty()) {
-                            Timber.d("RetroAchievements: Native rcheevos hash generated: $nativeHash for console $consoleId")
+                            Timber.d("RetroAchievements: Native rcheevos hash generated from buffer: $nativeHash for console $consoleId")
                             result.add(nativeHash)
                         }
                     } catch (t: Throwable) {
-                        Timber.w(t, "RetroAchievements: Failed to generate native rcheevos hash")
+                        Timber.w(t, "RetroAchievements: Failed to generate native rcheevos hash from buffer")
                     }
                 }
 
-                val md = MessageDigest.getInstance("MD5")
                 val isNesHeader = rawBytes.size > 16 &&
                     rawBytes[0] == 0x4E.toByte() &&
                     rawBytes[1] == 0x45.toByte() &&
