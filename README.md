@@ -27,6 +27,10 @@
 |:---:|:---:|:---:|
 | **In-Game Unlock Banner** | **In-Game Cheat Manager** | **In-Game ROM Patches** |
 
+| <img src="docs/screenshots/backup_create.jpg" width="270" alt="Create Backup Dialog"/> | <img src="docs/screenshots/backup_progress.jpg" width="270" alt="Backup Progress"/> | <img src="docs/screenshots/restore_success.jpg" width="270" alt="Restore Summary"/> |
+|:---:|:---:|:---:|
+| **Selective Backup Creation** | **Live Backup Progress** | **Restore Summary** |
+
 ---
 
 ## 🌟 Key Features & Changelog
