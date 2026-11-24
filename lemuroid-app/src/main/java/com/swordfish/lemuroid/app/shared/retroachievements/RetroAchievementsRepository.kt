@@ -422,73 +422,104 @@ class RetroAchievementsRepository(private val context: Context) {
                     game.fileUri.endsWith(".zip", ignoreCase = true) ||
                     game.fileName.endsWith(".zip", ignoreCase = true)
 
-                val romBytes: ByteArray? = if (isZip) {
-                    ZipInputStream(rawStreamBytes.inputStream()).use { zip ->
-                        var entry = zip.nextEntry
-                        var extracted: ByteArray? = null
-                        var fallbackExtracted: ByteArray? = null
-                        while (entry != null) {
-                            if (!entry.isDirectory) {
-                                val entryBytes = zip.readBytes()
-                                if (entry.name.equals(game.fileName, ignoreCase = true) ||
-                                    entry.name.substringAfterLast('/').equals(game.fileName, ignoreCase = true)
-                                ) {
-                                    extracted = entryBytes
-                                    break
-                                }
-                                val ext = entry.name.substringAfterLast('.', "").lowercase()
-                                val isRom = ext in setOf(
-                                    "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "smd",
-                                    "gen", "bin", "pce", "ngp", "ngc", "ws", "wsc", "z64", "n64", "nds"
-                                )
-                                if (isRom && fallbackExtracted == null) {
-                                    fallbackExtracted = entryBytes
-                                }
-                            }
-                            entry = zip.nextEntry
-                        }
-                        extracted ?: fallbackExtracted
-                    }
-                } else {
-                    rawStreamBytes
-                }
+                val isArcade = game.systemId.equals("fbneo", ignoreCase = true) ||
+                    game.systemId.equals("mame2003plus", ignoreCase = true) ||
+                    game.systemId.equals("arcade", ignoreCase = true)
 
-                if (romBytes != null && romBytes.isNotEmpty()) {
-                    val extension = if (game.fileName.contains('.')) {
-                        "." + game.fileName.substringAfterLast('.')
+                if (isArcade) {
+                    val zipName = if (game.fileName.endsWith(".zip", ignoreCase = true)) {
+                        game.fileName
                     } else {
-                        ".${game.systemId}"
+                        "${game.fileName}.zip"
                     }
-                    val tempRomFile = File(context.cacheDir, "temp_ra_rom$extension")
+                    val tempArcadeFile = File(context.cacheDir, zipName)
                     try {
-                        tempRomFile.writeBytes(romBytes)
+                        tempArcadeFile.writeBytes(rawStreamBytes)
                         val fileHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
                             consoleId,
-                            tempRomFile.absolutePath,
+                            tempArcadeFile.absolutePath,
                             null
                         )
                         if (!fileHash.isNullOrEmpty()) {
-                            Timber.d("RetroAchievements: Native hash generated via temp file: $fileHash for console $consoleId")
+                            Timber.d("RetroAchievements: Native hash generated for arcade zip: $fileHash for console $consoleId")
                             result.add(fileHash)
                         }
                     } catch (t: Throwable) {
-                        Timber.w(t, "RetroAchievements: Failed to hash via temp file")
+                        Timber.w(t, "RetroAchievements: Failed to hash arcade zip")
                     } finally {
                         try {
-                            tempRomFile.delete()
+                            tempArcadeFile.delete()
                         } catch (ignored: Throwable) {}
                     }
-                    try {
-                        val bufferHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
-                            consoleId,
-                            "",
-                            romBytes
-                        )
-                        if (!bufferHash.isNullOrEmpty()) {
-                            result.add(bufferHash)
+                } else {
+                    val romBytes: ByteArray? = if (isZip) {
+                        ZipInputStream(rawStreamBytes.inputStream()).use { zip ->
+                            var entry = zip.nextEntry
+                            var extracted: ByteArray? = null
+                            var fallbackExtracted: ByteArray? = null
+                            while (entry != null) {
+                                if (!entry.isDirectory) {
+                                    val entryBytes = zip.readBytes()
+                                    if (entry.name.equals(game.fileName, ignoreCase = true) ||
+                                        entry.name.substringAfterLast('/').equals(game.fileName, ignoreCase = true)
+                                    ) {
+                                        extracted = entryBytes
+                                        break
+                                    }
+                                    val ext = entry.name.substringAfterLast('.', "").lowercase()
+                                    val isRom = ext in setOf(
+                                        "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "smd",
+                                        "gen", "bin", "pce", "ngp", "ngc", "ws", "wsc", "z64", "n64", "nds"
+                                    )
+                                    if (isRom && fallbackExtracted == null) {
+                                        fallbackExtracted = entryBytes
+                                    }
+                                }
+                                entry = zip.nextEntry
+                            }
+                            extracted ?: fallbackExtracted
                         }
-                    } catch (t: Throwable) {
-                        Timber.w(t, "RetroAchievements: Failed to hash via buffer")
+                    } else {
+                        rawStreamBytes
+                    }
+
+                    if (romBytes != null && romBytes.isNotEmpty()) {
+                        val extension = if (game.fileName.contains('.')) {
+                            "." + game.fileName.substringAfterLast('.')
+                        } else {
+                            ".${game.systemId}"
+                        }
+                        val tempRomFile = File(context.cacheDir, "temp_ra_rom$extension")
+                        try {
+                            tempRomFile.writeBytes(romBytes)
+                            val fileHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
+                                consoleId,
+                                tempRomFile.absolutePath,
+                                null
+                            )
+                            if (!fileHash.isNullOrEmpty()) {
+                                Timber.d("RetroAchievements: Native hash generated via temp file: $fileHash for console $consoleId")
+                                result.add(fileHash)
+                            }
+                        } catch (t: Throwable) {
+                            Timber.w(t, "RetroAchievements: Failed to hash via temp file")
+                        } finally {
+                            try {
+                                tempRomFile.delete()
+                            } catch (ignored: Throwable) {}
+                        }
+                        try {
+                            val bufferHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
+                                consoleId,
+                                "",
+                                romBytes
+                            )
+                            if (!bufferHash.isNullOrEmpty()) {
+                                result.add(bufferHash)
+                            }
+                        } catch (t: Throwable) {
+                            Timber.w(t, "RetroAchievements: Failed to hash via buffer")
+                        }
                     }
                 }
             }
