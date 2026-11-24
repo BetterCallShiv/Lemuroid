@@ -132,7 +132,7 @@
 ### ⚡ 7. Cheats, IPS Patching, Save States & Gameplay Tweaks
 
 * **In-Game HUD Fast-Forward Button:**
-  * Dedicated on-screen HUD button (`⏩`) for instant fast-forward toggling without interrupting gameplay:
+  * Dedicated on-screen HUD button (`⏩`) for instant fast-forward toggling.
   * Single Tap: Instantly toggles Fast-Forward ON / OFF.
   * Long-Press: Opens the fast-forward speed selector dialog.
   * Configure default speed globally under **Settings → General → Fast-forward speed**.
