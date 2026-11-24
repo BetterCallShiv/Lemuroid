@@ -223,11 +223,3 @@ Build the release APK:
 * **[RetroAchievements](https://retroachievements.org)** and the `rcheevos` team for their C library.
 * **[Libretro](https://www.libretro.com/)** and core maintainers for cross-platform emulation backends.
 * **[Hasheous](https://hasheous.org/)**, **[ScreenScraper](https://www.screenscraper.fr/)** and **[IGDB](https://www.igdb.com/)** for ROM identification, metadata and media assets.
-
----
-
-## 👨‍💻 Author
-
-**Shivam Raj** ([@BetterCallShiv](https://github.com/BetterCallShiv))
-- Email: [bettercallshiv@gmail.com](mailto:bettercallshiv@gmail.com)
-- GitHub: [github.com/BetterCallShiv](https://github.com/BetterCallShiv)
