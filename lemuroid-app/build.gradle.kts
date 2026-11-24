@@ -105,10 +105,11 @@ android {
         }
 
         maybeCreate("release").apply {
-            storeFile = file("$rootDir/release.jks")
-            keyAlias = "lemuroid"
-            storePassword = "lemuroid"
-            keyPassword = "lemuroid"
+            val keystoreFile = file(System.getenv("KEYSTORE_FILE") ?: "$rootDir/release.jks")
+            storeFile = keystoreFile
+            keyAlias = System.getenv("KEY_ALIAS") ?: "lemuroid"
+            storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "lemuroid"
+            keyPassword = System.getenv("KEY_PASSWORD") ?: "lemuroid"
         }
     }
 
@@ -116,7 +117,7 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             signingConfig =
-                if (file("$rootDir/release.jks").exists()) {
+                if ((signingConfigs.getByName("release").storeFile?.exists() == true)) {
                     signingConfigs["release"]
                 } else {
                     signingConfigs["debug"]
