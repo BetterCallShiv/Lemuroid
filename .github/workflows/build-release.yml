@@ -4,14 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       create_release:
-        description: 'Publish standalone APKs directly to GitHub Releases'
+        description: 'Publish standalone APK to GitHub Releases'
         required: true
         type: boolean
         default: true
       release_tag:
-        description: 'Release Tag (e.g. v1.0.0)'
+        description: 'e.g alpha-1.0.0'
         required: true
-        default: 'v1.0.0'
+        default: 'alpha-1.0.0'
+      draft:
+        description: 'Draft Release'
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -64,12 +69,12 @@ jobs:
         run: |
           ls -la lemuroid-app/build/outputs/apk/alphaFreeBundle/release/
 
-      - name: Publish Standalone APKs to GitHub Release
+      - name: Publish APKs to GitHub Release
         if: ${{ inputs.create_release }}
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.release_tag }}
           name: AlphaLemuroid ${{ inputs.release_tag }}
-          draft: false
+          draft: ${{ inputs.draft }}
           prerelease: false
           files: lemuroid-app/build/outputs/apk/alphaFreeBundle/release/*.apk
