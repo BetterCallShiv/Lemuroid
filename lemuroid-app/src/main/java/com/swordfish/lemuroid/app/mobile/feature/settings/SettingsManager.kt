@@ -9,9 +9,13 @@ import com.swordfish.lemuroid.common.math.Fraction
 import com.swordfish.lemuroid.lib.storage.cache.CacheCleaner
 import dagger.Lazy
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 
 class SettingsManager(private val context: Context, sharedPreferences: Lazy<SharedPreferences>) {
     private val sharedPreferences by lazy { FlowSharedPreferences(sharedPreferences.get()) }
@@ -112,6 +116,42 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
 
     fun setGameViewMode(viewMode: String) {
         sharedPreferences.getString(getString(R.string.pref_key_game_view_mode), "LIST").set(viewMode)
+    }
+
+    fun recentSearchesFlow(): Flow<List<String>> =
+        sharedPreferences.getString(getString(R.string.pref_key_recent_searches), "[]")
+            .asFlow()
+            .map(::decodeRecentSearches)
+
+    fun addRecentSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+        val pref = sharedPreferences.getString(getString(R.string.pref_key_recent_searches), "[]")
+        val updated = (listOf(trimmed) + decodeRecentSearches(pref.get()).filterNot { it.equals(trimmed, ignoreCase = true) })
+            .take(MAX_RECENT_SEARCHES)
+        pref.set(Json.encodeToString(RECENT_SEARCHES_SERIALIZER, updated))
+    }
+
+    fun removeRecentSearch(query: String) {
+        val pref = sharedPreferences.getString(getString(R.string.pref_key_recent_searches), "[]")
+        val updated = decodeRecentSearches(pref.get()).filterNot { it.equals(query, ignoreCase = true) }
+        pref.set(Json.encodeToString(RECENT_SEARCHES_SERIALIZER, updated))
+    }
+
+    fun clearRecentSearches() {
+        sharedPreferences.getString(getString(R.string.pref_key_recent_searches), "[]").set("[]")
+    }
+
+    private fun decodeRecentSearches(raw: String): List<String> =
+        runCatching {
+            Json.decodeFromString(RECENT_SEARCHES_SERIALIZER, raw)
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        }.getOrDefault(emptyList())
+
+    companion object {
+        private const val MAX_RECENT_SEARCHES = 10
+        private val RECENT_SEARCHES_SERIALIZER = ListSerializer(String.serializer())
     }
 
     private suspend fun booleanPreference(

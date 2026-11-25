@@ -219,6 +219,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 .collectAsState(initial = false)
                 .value
 
+            val recentSearches by settingsManager.recentSearchesFlow()
+                .collectAsState(initial = emptyList())
+
             val onGameQuickPlay = { game: Game ->
                 val isResumed = navController.currentBackStackEntry?.lifecycle?.currentState ==
                     androidx.lifecycle.Lifecycle.State.RESUMED
@@ -268,18 +271,19 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
             val isGridView = gameViewMode.equals("GRID", ignoreCase = true)
 
             LaunchedEffect(currentRoute) {
-                if (currentRoute != MainRoute.SYSTEM_GAMES) {
-                    isSystemSearchActive = false
-                    systemSearchQuery = ""
-                }
-                if (currentRoute != MainRoute.FAVORITES) {
-                    isFavoritesSearchActive = false
-                    favoritesSearchQuery = ""
+                if (currentRoute != MainRoute.SEARCH && currentRoute != MainRoute.GAME_DETAILS) {
+                    mainViewModel.changeQueryString("")
                 }
                 if (currentRoute != MainRoute.SYSTEM_GAMES && currentRoute != MainRoute.GAME_DETAILS) {
+                    isSystemSearchActive = false
+                    systemSearchQuery = ""
                     selectedSystemGenres = emptySet()
                     selectedSystemYear = null
                     selectedSystemRating = null
+                }
+                if (currentRoute != MainRoute.FAVORITES && currentRoute != MainRoute.GAME_DETAILS) {
+                    isFavoritesSearchActive = false
+                    favoritesSearchQuery = ""
                 }
             }
 
@@ -347,6 +351,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             mainUIState = mainUIState,
                             titleOverride = currentSystemTitle,
                             onUpdateQueryString = { mainViewModel.changeQueryString(it) },
+                            onSearchSubmit = { settingsManager.addRecentSearch(mainUIState.searchQuery) },
                             onScrapePlatformPressed = onScrapePlatformPressed,
                             onScrapeAllPlatformsPressed = { showBatchScrapeAllDialog = true },
                             onCancelScrapePlatform = onCancelScrapePlatform,
@@ -430,12 +435,19 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                     factory = SearchViewModel.Factory(retrogradeDb),
                                 ),
                             searchQuery = mainUIState.searchQuery,
+                            recentSearches = recentSearches,
                             showQuickPlayButton = gridQuickPlay,
+                            onRecentSearchClick = { query ->
+                                mainViewModel.changeQueryString(query)
+                                settingsManager.addRecentSearch(query)
+                            },
+                            onRemoveRecentSearch = { query -> settingsManager.removeRecentSearch(query) },
+                            onClearRecentSearches = { settingsManager.clearRecentSearches() },
+                            onSaveRecentSearch = { query -> settingsManager.addRecentSearch(query) },
                             onGameClick = onGameClick,
                             onGameQuickPlay = onGameQuickPlay,
                             onGameLongClick = onGameLongClick,
                             onGameFavoriteToggle = onGameFavoriteToggle,
-                            onResetSearchQuery = { mainViewModel.changeQueryString("") },
                         )
                     }
                     composable(MainRoute.SYSTEMS) {
@@ -675,6 +687,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 onFavoriteToggle = { game: Game, isFavorite: Boolean ->
                     gameInteractor.onFavoriteToggle(game, isFavorite)
                 },
+                onRemoveFromRecents = { game -> gameInteractor.onRemoveFromRecents(game) },
                 onAddToCollection = { game -> gameForCollectionDialog = game },
                 onCreateShortcut = { gameInteractor.onCreateShortcut(it) },
                 onSetCustomName = { game, name -> gameInteractor.onSetCustomName(game, name) },

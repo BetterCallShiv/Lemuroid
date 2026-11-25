@@ -82,4 +82,5 @@
     <string translatable="false" name="pref_key_game_view_mode">pref_key_game_view_mode</string>
     <string translatable="false" name="pref_key_scraper_priority">pref_key_scraper_priority</string>
     <string translatable="false" name="pref_key_fast_forward_speed">pref_key_fast_forward_speed</string>
+    <string translatable="false" name="pref_key_recent_searches">pref_key_recent_searches</string>
 </resources>

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Sort
@@ -54,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -68,6 +70,7 @@ fun MainTopBar(
     onUpdateQueryString: (String) -> Unit,
     mainUIState: MainViewModel.UiState,
     titleOverride: String? = null,
+    onSearchSubmit: (() -> Unit)? = null,
     onScrapePlatformPressed: (() -> Unit)? = null,
     onScrapeAllPlatformsPressed: (() -> Unit)? = null,
     onCancelScrapePlatform: (() -> Unit)? = null,
@@ -90,6 +93,7 @@ fun MainTopBar(
             mainUIState = mainUIState,
             titleOverride = titleOverride,
             onUpdateQueryString = onUpdateQueryString,
+            onSearchSubmit = onSearchSubmit,
             onScrapePlatformPressed = onScrapePlatformPressed,
             onScrapeAllPlatformsPressed = onScrapeAllPlatformsPressed,
             onCancelScrapePlatform = onCancelScrapePlatform,
@@ -120,6 +124,7 @@ fun LemuroidTopAppBar(
     mainUIState: MainViewModel.UiState,
     titleOverride: String? = null,
     onUpdateQueryString: (String) -> Unit,
+    onSearchSubmit: (() -> Unit)? = null,
     onScrapePlatformPressed: (() -> Unit)? = null,
     onScrapeAllPlatformsPressed: (() -> Unit)? = null,
     onCancelScrapePlatform: (() -> Unit)? = null,
@@ -145,6 +150,7 @@ fun LemuroidTopAppBar(
                     query = mainUIState.searchQuery,
                     placeholder = stringResource(R.string.search_hint_games),
                     onUpdateQueryString = onUpdateQueryString,
+                    onSubmit = onSearchSubmit,
                     onClose = {
                         if (mainUIState.searchQuery.isNotEmpty()) {
                             onUpdateQueryString("")
@@ -470,13 +476,16 @@ private fun LemuroidSearchView(
     query: String,
     placeholder: String,
     onUpdateQueryString: (String) -> Unit,
+    onSubmit: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
 ) {
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        if (query.isEmpty()) {
+            focusRequester.requestFocus()
+        }
     }
 
     Box(
@@ -525,9 +534,17 @@ private fun LemuroidSearchView(
             },
             onValueChange = { onUpdateQueryString(it) },
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions =
                 KeyboardActions(
-                    onDone = { focusManager.clearFocus(true) },
+                    onDone = {
+                        focusManager.clearFocus(true)
+                        onSubmit?.invoke()
+                    },
+                    onSearch = {
+                        focusManager.clearFocus(true)
+                        onSubmit?.invoke()
+                    },
                 ),
             colors =
                 TextFieldDefaults.colors(

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.HistoryToggleOff
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
@@ -87,6 +88,7 @@ fun MainGameContextActions(
     onGameInfo: (Game) -> Unit,
     onManageCheats: (Game) -> Unit,
     onFavoriteToggle: (Game, Boolean) -> Unit,
+    onRemoveFromRecents: (Game) -> Unit,
     onAddToCollection: (Game) -> Unit,
     onCreateShortcut: (Game) -> Unit,
     onSetCustomName: (Game, String) -> Unit,
@@ -119,6 +121,7 @@ fun MainGameContextActions(
                 onGameInfo = onGameInfo,
                 onManageCheats = onManageCheats,
                 onFavoriteToggle = onFavoriteToggle,
+                onRemoveFromRecents = onRemoveFromRecents,
                 onAddToCollection = onAddToCollection,
                 shortcutSupported = shortcutSupported,
                 onCreateShortcut = onCreateShortcut,
@@ -141,6 +144,7 @@ private fun ContextActionContent(
     onGameInfo: (Game) -> Unit,
     onManageCheats: (Game) -> Unit,
     onFavoriteToggle: (Game, Boolean) -> Unit,
+    onRemoveFromRecents: (Game) -> Unit,
     onAddToCollection: (Game) -> Unit,
     shortcutSupported: Boolean,
     onCreateShortcut: (Game) -> Unit,
@@ -233,6 +237,17 @@ private fun ContextActionContent(
                 icon = Icons.Default.Favorite,
                 onClick = {
                     onFavoriteToggle(selectedGame, true)
+                    selectedGameState.value = null
+                },
+            )
+        }
+
+        if (selectedGame.lastPlayedAt != null) {
+            ContextActionEntry(
+                label = stringResource(id = R.string.game_context_menu_remove_from_recents),
+                icon = Icons.Default.HistoryToggleOff,
+                onClick = {
+                    onRemoveFromRecents(selectedGame)
                     selectedGameState.value = null
                 },
             )

@@ -62,6 +62,12 @@ class GameInteractor(
         }
     }
 
+    fun onRemoveFromRecents(game: Game) {
+        GlobalScope.launch(Dispatchers.IO) {
+            retrogradeDb.gameDao().update(game.copy(lastPlayedAt = null))
+        }
+    }
+
     fun onCreateShortcut(game: Game) {
         GlobalScope.launch {
             shortcutsGenerator.pinShortcutForGame(game)

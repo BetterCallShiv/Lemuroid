@@ -36,12 +36,12 @@ class SearchViewModel(private val retrogradeDb: RetrogradeDatabase) : ViewModel(
     val searchResults =
         queryString
             .debounce(400.milliseconds)
-            .flatMapLatest {
+            .flatMapLatest { query ->
                 buildFlowPaging(20, viewModelScope) {
-                    retrogradeDb.gameSearchDao().search(it)
+                    retrogradeDb.gameSearchDao().search(query)
                 }
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), PagingData.empty())
+            .stateIn(viewModelScope, SharingStarted.Lazily, PagingData.empty())
 
     val ratingsByGameId: StateFlow<Map<Int, Float>> =
         retrogradeDb.gameDetailsDao()
@@ -49,10 +49,10 @@ class SearchViewModel(private val retrogradeDb: RetrogradeDatabase) : ViewModel(
             .map { list -> list.associate { it.gameId to it.rating } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
 
-    val searchState: Flow<UIState> =
+    val searchState: StateFlow<UIState> =
         queryString
-            .flatMapLatest { searchStatesForQuery(it) }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), UIState.Idle)
+            .flatMapLatest { query -> searchStatesForQuery(query) }
+            .stateIn(viewModelScope, SharingStarted.Lazily, UIState.Idle)
 
     private fun searchStatesForQuery(query: String): Flow<UIState> {
         if (query.isEmpty()) {
