@@ -115,7 +115,7 @@ interface GameDao {
 
     @Query(
         """
-        SELECT g.*, d.rating AS rating, d.genres AS genres FROM games g
+        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate FROM games g
         LEFT JOIN game_details d ON g.id = d.gameId
         WHERE g.systemId IN (:systemIds)
           AND (
@@ -184,7 +184,7 @@ interface GameDao {
 
     @Query(
         """
-        SELECT g.*, d.rating AS rating, d.genres AS genres FROM games g
+        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate FROM games g
         LEFT JOIN game_details d ON g.id = d.gameId
         WHERE g.isFavorite = 1
           AND (
@@ -267,4 +267,5 @@ data class GameListItem(
     @Embedded val game: Game,
     val rating: Float?,
     val genres: String?,
+    val releaseDate: String? = null,
 )

@@ -21,6 +21,7 @@
     <string name="pref_key_allow_direct_game_load" translatable="false">allow_direct_game_load</string>
     <string name="pref_key_enable_immersive_mode" translatable="false">enable_immersive_mode</string>
     <string name="pref_key_direct_play_on_tap" translatable="false">direct_play_on_tap</string>
+    <string name="pref_key_grid_quick_play" translatable="false">grid_quick_play</string>
     <string name="pref_key_screenscraper_user" translatable="false">screenscraper_user</string>
     <string name="pref_key_screenscraper_password" translatable="false">screenscraper_password</string>
     <string name="pref_key_screenscraper_devid" translatable="false">screenscraper_devid</string>

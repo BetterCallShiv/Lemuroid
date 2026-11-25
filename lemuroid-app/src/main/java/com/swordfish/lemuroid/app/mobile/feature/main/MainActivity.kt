@@ -57,6 +57,7 @@ import com.fredporciuncula.flow.preferences.FlowSharedPreferences
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.feature.favorites.FavoritesScreen
 import com.swordfish.lemuroid.app.mobile.feature.favorites.FavoritesViewModel
+import com.swordfish.lemuroid.app.mobile.feature.gamedetails.DetailChipFilter
 import com.swordfish.lemuroid.app.mobile.feature.gamedetails.GameDetailScreen
 import com.swordfish.lemuroid.app.mobile.feature.gamedetails.GameDetailViewModel
 import com.swordfish.lemuroid.app.mobile.feature.gamemenu.cheats.GameCheatsActivity
@@ -214,6 +215,18 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 .collectAsState(initial = false)
                 .value
 
+            val gridQuickPlay = settingsManager.gridQuickPlayFlow()
+                .collectAsState(initial = false)
+                .value
+
+            val onGameQuickPlay = { game: Game ->
+                val isResumed = navController.currentBackStackEntry?.lifecycle?.currentState ==
+                    androidx.lifecycle.Lifecycle.State.RESUMED
+                if (isResumed && SystemClock.uptimeMillis() - lastDestinationChangeMs >= 250L) {
+                    gameInteractor.onGamePlay(game)
+                }
+            }
+
             val onGameClick = { game: Game ->
                 val isResumed = navController.currentBackStackEntry?.lifecycle?.currentState ==
                     androidx.lifecycle.Lifecycle.State.RESUMED
@@ -239,6 +252,8 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
             var isFavoritesSearchActive by remember { mutableStateOf(false) }
             var favoritesSearchQuery by remember { mutableStateOf("") }
             var selectedSystemGenres by remember { mutableStateOf<Set<String>>(emptySet()) }
+            var selectedSystemYear by remember { mutableStateOf<String?>(null) }
+            var selectedSystemRating by remember { mutableStateOf<Float?>(null) }
             var showSortDialog by remember { mutableStateOf(false) }
             var gameForCollectionDialog by remember { mutableStateOf<Game?>(null) }
 
@@ -263,6 +278,8 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                 }
                 if (currentRoute != MainRoute.SYSTEM_GAMES && currentRoute != MainRoute.GAME_DETAILS) {
                     selectedSystemGenres = emptySet()
+                    selectedSystemYear = null
+                    selectedSystemRating = null
                 }
             }
 
@@ -380,8 +397,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                             coresSelection,
                                         ),
                                 ),
+                            showQuickPlayButton = gridQuickPlay,
                             onGameClick = onGameClick,
-                            onGamePlay = { gameInteractor.onGamePlay(it) },
+                            onGamePlay = onGameQuickPlay,
                             onGameLongClick = onGameLongClick,
                             onGameFavoriteToggle = onGameFavoriteToggle,
                             onOpenCoreSelection = { navController.navigateToRoute(MainRoute.SETTINGS_CORES_SELECTION) },
@@ -397,7 +415,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             searchQuery = favoritesSearchQuery,
                             sortOrder = currentSortOrder,
                             isGridView = isGridView,
+                            showQuickPlayButton = gridQuickPlay,
                             onGameClick = onGameClick,
+                            onGameQuickPlay = onGameQuickPlay,
                             onGameLongClick = onGameLongClick,
                             onGameFavoriteToggle = onGameFavoriteToggle,
                         )
@@ -410,7 +430,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                     factory = SearchViewModel.Factory(retrogradeDb),
                                 ),
                             searchQuery = mainUIState.searchQuery,
+                            showQuickPlayButton = gridQuickPlay,
                             onGameClick = onGameClick,
+                            onGameQuickPlay = onGameQuickPlay,
                             onGameLongClick = onGameLongClick,
                             onGameFavoriteToggle = onGameFavoriteToggle,
                             onResetSearchQuery = { mainViewModel.changeQueryString("") },
@@ -451,9 +473,15 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             searchQuery = if (isSystemSearchActive) systemSearchQuery else "",
                             selectedGenres = selectedSystemGenres,
                             onGenresChange = { selectedSystemGenres = it },
+                            selectedYear = selectedSystemYear,
+                            onClearYear = { selectedSystemYear = null },
+                            selectedRating = selectedSystemRating,
+                            onClearRating = { selectedSystemRating = null },
                             sortOrder = currentSortOrder,
                             isGridView = isGridView,
+                            showQuickPlayButton = gridQuickPlay,
                             onGameClick = onGameClick,
+                            onGameQuickPlay = onGameQuickPlay,
                             onGameLongClick = onGameLongClick,
                             onGameFavoriteToggle = onGameFavoriteToggle,
                         )
@@ -570,22 +598,64 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             onBack = { navController.popBackStack() },
                             onPlayGame = { gameInteractor.onGamePlay(it) },
                             onOpenCheats = { startActivity(GameCheatsActivity.newIntent(this@MainActivity, it)) },
-                            onGenreClick = { clickedGame, genre ->
-                                selectedSystemGenres = setOf(genre)
-                                val prevRoute = navController.previousBackStackEntry?.destination?.route
-                                if (prevRoute == MainRoute.SYSTEM_GAMES.route) {
+                            onSystemClick = { clickedGame ->
+                                selectedSystemGenres = emptySet()
+                                selectedSystemYear = null
+                                selectedSystemRating = null
+                                isSystemSearchActive = false
+                                systemSearchQuery = ""
+                                val targetMetaId = MetaSystemID.values().firstOrNull { m ->
+                                    m.systemIDs.any { it.dbname == clickedGame.systemId }
+                                }?.name
+                                if (targetMetaId != null) {
+                                    val prevEntry = navController.previousBackStackEntry
+                                    if (prevEntry?.destination?.route == MainRoute.SYSTEM_GAMES.route &&
+                                        prevEntry.arguments?.getString("metaSystemId") == targetMetaId
+                                    ) {
+                                        navController.popBackStack()
+                                    } else {
+                                        navController.navigate(
+                                            MainRoute.SYSTEM_GAMES.route.replace("{metaSystemId}", targetMetaId),
+                                        )
+                                    }
+                                }
+                            },
+                            onChipFilterSelected = { clickedGame, filter, allSystems ->
+                                isSystemSearchActive = false
+                                systemSearchQuery = ""
+                                when (filter) {
+                                    is DetailChipFilter.Genre -> {
+                                        selectedSystemGenres = setOf(filter.genre)
+                                        selectedSystemYear = null
+                                        selectedSystemRating = null
+                                    }
+                                    is DetailChipFilter.Year -> {
+                                        selectedSystemGenres = emptySet()
+                                        selectedSystemYear = filter.year
+                                        selectedSystemRating = null
+                                    }
+                                    is DetailChipFilter.Rating -> {
+                                        selectedSystemGenres = emptySet()
+                                        selectedSystemYear = null
+                                        selectedSystemRating = filter.rating
+                                    }
+                                }
+                                val targetMetaId = if (allSystems) {
+                                    GamesViewModel.ALL_SYSTEMS_ID
+                                } else {
+                                    MetaSystemID.values().firstOrNull { m ->
+                                        m.systemIDs.any { it.dbname == clickedGame.systemId }
+                                    }?.name ?: GamesViewModel.ALL_SYSTEMS_ID
+                                }
+                                val prevEntry = navController.previousBackStackEntry
+                                if (prevEntry?.destination?.route == MainRoute.SYSTEM_GAMES.route &&
+                                    prevEntry.arguments?.getString("metaSystemId") == targetMetaId
+                                ) {
                                     navController.popBackStack()
                                 } else {
-                                    val meta = MetaSystemID.values().firstOrNull { m ->
-                                        m.systemIDs.any { it.dbname == clickedGame.systemId }
-                                    }
-                                    if (meta != null) {
-                                        navController.navigate(
-                                            MainRoute.SYSTEM_GAMES.route.replace("{metaSystemId}", meta.name),
-                                        )
-                                    } else {
-                                        navController.popBackStack()
-                                    }
+                                    navController.navigate(
+                                        MainRoute.SYSTEM_GAMES.route.replace("{metaSystemId}", targetMetaId),
+                                    )
                                 }
                             },
                         )

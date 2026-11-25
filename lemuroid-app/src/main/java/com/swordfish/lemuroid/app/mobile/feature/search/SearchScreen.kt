@@ -27,7 +27,9 @@ fun SearchScreen(
     modifier: Modifier = Modifier,
     viewModel: SearchViewModel,
     searchQuery: String,
+    showQuickPlayButton: Boolean = false,
     onGameClick: (Game) -> Unit,
+    onGameQuickPlay: ((Game) -> Unit)? = null,
     onGameLongClick: (Game) -> Unit,
     onGameFavoriteToggle: (Game, Boolean) -> Unit,
     onResetSearchQuery: () -> Unit,
@@ -67,7 +69,9 @@ fun SearchScreen(
                     modifier,
                     searchGames,
                     ratingsByGameId,
+                    showQuickPlayButton,
                     onGameClick,
+                    onGameQuickPlay,
                     onGameLongClick,
                     onGameFavoriteToggle,
                 )
@@ -82,7 +86,9 @@ private fun SearchResultsView(
     modifier: Modifier,
     games: LazyPagingItems<Game>,
     ratingsByGameId: Map<Int, Float>,
+    showQuickPlayButton: Boolean,
     onGameClick: (Game) -> Unit,
+    onGameQuickPlay: ((Game) -> Unit)?,
     onGameLongClick: (Game) -> Unit,
     onGameFavoriteToggle: (Game, Boolean) -> Unit,
 ) {
@@ -99,6 +105,9 @@ private fun SearchResultsView(
                 onFavoriteToggle = { isFavorite ->
                     onGameFavoriteToggle(game, isFavorite)
                 },
+                onQuickPlayClick = if (showQuickPlayButton && onGameQuickPlay != null) {
+                    { onGameQuickPlay(game) }
+                } else null,
             )
         }
     }

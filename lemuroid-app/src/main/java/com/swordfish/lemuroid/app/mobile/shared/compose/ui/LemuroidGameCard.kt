@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
@@ -28,9 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import java.util.Locale
 
@@ -43,6 +47,7 @@ fun LemuroidGameCard(
     onClick: () -> Unit = { },
     onLongClick: () -> Unit = { },
     onFavoriteToggle: ((Boolean) -> Unit)? = null,
+    onQuickPlayClick: (() -> Unit)? = null,
 ) {
     val validRating = rating?.takeIf { it > 0f }
 
@@ -131,6 +136,10 @@ fun LemuroidGameCard(
                         )
                     }
                 }
+
+                if (onQuickPlayClick != null) {
+                    GameQuickPlayBadge(onClick = onQuickPlayClick)
+                }
             }
             LemuroidGameTexts(
                 game = game,
@@ -140,5 +149,26 @@ fun LemuroidGameCard(
                 compact = true,
             )
         }
+    }
+}
+
+@Composable
+fun BoxScope.GameQuickPlayBadge(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomEnd)
+            .padding(6.dp)
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.62f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = stringResource(id = R.string.game_details_play),
+            tint = Color.White.copy(alpha = 0.90f),
+            modifier = Modifier.size(20.dp),
+        )
     }
 }

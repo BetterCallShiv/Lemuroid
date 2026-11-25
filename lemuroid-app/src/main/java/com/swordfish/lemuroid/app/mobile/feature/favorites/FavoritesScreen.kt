@@ -43,7 +43,9 @@ fun FavoritesScreen(
     searchQuery: String = "",
     sortOrder: GameSortOrder = GameSortOrder.NAME_ASC,
     isGridView: Boolean = true,
+    showQuickPlayButton: Boolean = false,
     onGameClick: (Game) -> Unit,
+    onGameQuickPlay: ((Game) -> Unit)? = null,
     onGameLongClick: (Game) -> Unit,
     onGameFavoriteToggle: (Game, Boolean) -> Unit,
 ) {
@@ -177,6 +179,9 @@ fun FavoritesScreen(
                         onClick = { onGameClick(game) },
                         onLongClick = { onGameLongClick(game) },
                         onFavoriteToggle = { isFavorite -> onGameFavoriteToggle(game, isFavorite) },
+                        onQuickPlayClick = if (showQuickPlayButton && onGameQuickPlay != null) {
+                            { onGameQuickPlay(game) }
+                        } else null,
                     )
                 }
             }
@@ -197,6 +202,9 @@ fun FavoritesScreen(
                         onClick = { onGameClick(game) },
                         onLongClick = { onGameLongClick(game) },
                         onFavoriteToggle = { isFavorite -> onGameFavoriteToggle(game, isFavorite) },
+                        onQuickPlayClick = if (showQuickPlayButton && onGameQuickPlay != null) {
+                            { onGameQuickPlay(game) }
+                        } else null,
                     )
                 }
             }

@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.VideogameAsset
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -84,8 +85,15 @@ import coil.request.ImageRequest
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameImage
 import com.swordfish.lemuroid.lib.library.GameSystem
+import com.swordfish.lemuroid.lib.library.MetaSystemID
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import java.util.Locale
+
+sealed interface DetailChipFilter {
+    data class Genre(val genre: String) : DetailChipFilter
+    data class Year(val year: String) : DetailChipFilter
+    data class Rating(val rating: Float, val formattedRating: String) : DetailChipFilter
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -95,7 +103,8 @@ fun GameDetailScreen(
     onBack: () -> Unit,
     onPlayGame: (Game) -> Unit,
     onOpenCheats: (Game) -> Unit,
-    onGenreClick: ((Game, String) -> Unit)? = null,
+    onSystemClick: ((Game) -> Unit)? = null,
+    onChipFilterSelected: ((Game, DetailChipFilter, Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     val achievementsState by viewModel.achievementsState.collectAsState()
@@ -103,6 +112,7 @@ fun GameDetailScreen(
     val isHardcore = remember { RetroAchievementsPreferences(context).hardcore }
     val gameWithDetails = state.gameWithDetails
     val game = gameWithDetails?.game
+    var pendingChipFilter by remember { mutableStateOf<DetailChipFilter?>(null) }
 
     if (game == null) {
         Box(
@@ -264,21 +274,30 @@ fun GameDetailScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         item(key = "tag_system") {
-                            GameDetailTag(text = game.systemId.uppercase(Locale.ROOT))
+                            GameDetailTag(
+                                text = game.systemId.uppercase(Locale.ROOT),
+                                onClick = onSystemClick?.let { handler -> { handler(game) } },
+                            )
                         }
 
-                        details?.releaseDate?.take(4)?.let { year ->
+                        details?.releaseDate?.take(4)?.takeIf { it.all(Char::isDigit) }?.let { year ->
                             item(key = "tag_year") {
-                                GameDetailTag(text = year)
+                                GameDetailTag(
+                                    text = year,
+                                    onClick = onChipFilterSelected?.let {
+                                        { pendingChipFilter = DetailChipFilter.Year(year) }
+                                    },
+                                )
                             }
                         }
 
                         details?.rating?.takeIf { it > 0f }?.let { rating ->
                             val count = details.ratingCount?.takeIf { it > 0 }
+                            val shortRating = String.format(Locale.US, "%.1f", rating)
                             val ratingText = if (count != null) {
                                 String.format(Locale.US, "%.1f (%,d)", rating, count)
                             } else {
-                                String.format(Locale.US, "%.1f", rating)
+                                shortRating
                             }
                             item(key = "tag_rating") {
                                 GameDetailTag(
@@ -291,6 +310,9 @@ fun GameDetailScreen(
                                             modifier = Modifier.size(15.dp),
                                         )
                                     },
+                                    onClick = onChipFilterSelected?.let {
+                                        { pendingChipFilter = DetailChipFilter.Rating(rating, shortRating) }
+                                    },
                                 )
                             }
                         }
@@ -299,8 +321,93 @@ fun GameDetailScreen(
                             val genre = genresList[index]
                             GameDetailTag(
                                 text = genre,
-                                onClick = onGenreClick?.let { handler -> { handler(game, genre) } },
+                                onClick = onChipFilterSelected?.let {
+                                    { pendingChipFilter = DetailChipFilter.Genre(genre) }
+                                },
                             )
+                        }
+                    }
+
+                    val activePendingFilter = pendingChipFilter
+                    if (activePendingFilter != null && onChipFilterSelected != null) {
+                        val filterLabel = when (activePendingFilter) {
+                            is DetailChipFilter.Genre -> activePendingFilter.genre
+                            is DetailChipFilter.Year -> activePendingFilter.year
+                            is DetailChipFilter.Rating -> "★ ${activePendingFilter.formattedRating}"
+                        }
+                        val metaSystem = remember(game.systemId) {
+                            MetaSystemID.values().firstOrNull { m ->
+                                m.systemIDs.any { it.dbname == game.systemId }
+                            }
+                        }
+                        val systemTitle = metaSystem?.let { stringResource(it.titleResId) }
+                            ?: game.systemId.uppercase(Locale.ROOT)
+
+                        Dialog(onDismissRequest = { pendingChipFilter = null }) {
+                            Surface(
+                                shape = AlertDialogDefaults.shape,
+                                color = AlertDialogDefaults.containerColor,
+                                tonalElevation = AlertDialogDefaults.TonalElevation,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(
+                                        start = 24.dp,
+                                        top = 24.dp,
+                                        end = 24.dp,
+                                        bottom = 10.dp,
+                                    ),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.game_details_chip_filter_title, filterLabel),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        color = AlertDialogDefaults.titleContentColor,
+                                    )
+                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.game_details_chip_filter_message),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Button(
+                                            onClick = {
+                                                pendingChipFilter = null
+                                                onChipFilterSelected(game, activePendingFilter, true)
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp),
+                                        ) {
+                                            Text(text = stringResource(R.string.game_details_chip_scope_all))
+                                        }
+                                        OutlinedButton(
+                                            onClick = {
+                                                pendingChipFilter = null
+                                                onChipFilterSelected(game, activePendingFilter, false)
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(10.dp),
+                                        ) {
+                                            Text(text = stringResource(R.string.game_details_chip_scope_system, systemTitle))
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.CenterEnd,
+                                    ) {
+                                        TextButton(
+                                            onClick = { pendingChipFilter = null },
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        ) {
+                                            Text(text = stringResource(R.string.cancel))
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

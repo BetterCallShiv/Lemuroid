@@ -71,6 +71,8 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
 
     fun directPlayOnTapFlow() = sharedPreferences.getBoolean(getString(R.string.pref_key_direct_play_on_tap), false).asFlow()
 
+    fun gridQuickPlayFlow() = sharedPreferences.getBoolean(getString(R.string.pref_key_grid_quick_play), false).asFlow()
+
     suspend fun screenScraperUser() = stringPreference(R.string.pref_key_screenscraper_user, "")
 
     suspend fun screenScraperPassword() = stringPreference(R.string.pref_key_screenscraper_password, "")

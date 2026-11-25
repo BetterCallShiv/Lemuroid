@@ -660,6 +660,11 @@ private fun GeneralSettings() {
             subtitle = { Text(text = stringResource(id = R.string.settings_description_direct_play_on_tap)) },
         )
         LemuroidSettingsSwitch(
+            state = booleanPreferenceState(R.string.pref_key_grid_quick_play, false),
+            title = { Text(text = stringResource(id = R.string.settings_title_grid_quick_play)) },
+            subtitle = { Text(text = stringResource(id = R.string.settings_description_grid_quick_play)) },
+        )
+        LemuroidSettingsSwitch(
             state = immersiveMode,
             title = { Text(text = stringResource(id = R.string.settings_title_immersive_mode)) },
             subtitle = { Text(text = stringResource(id = R.string.settings_description_immersive_mode)) },

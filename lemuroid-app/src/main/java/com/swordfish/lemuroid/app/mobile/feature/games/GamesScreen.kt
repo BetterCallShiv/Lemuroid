@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Star
@@ -59,6 +60,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import com.swordfish.lemuroid.R
+import com.swordfish.lemuroid.app.mobile.shared.compose.ui.GameQuickPlayBadge
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidEmptyView
 import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameListRow
 import com.swordfish.lemuroid.app.shared.covers.CoverUtils
@@ -73,9 +75,15 @@ fun GamesScreen(
     searchQuery: String = "",
     selectedGenres: Set<String> = emptySet(),
     onGenresChange: (Set<String>) -> Unit = {},
+    selectedYear: String? = null,
+    onClearYear: () -> Unit = {},
+    selectedRating: Float? = null,
+    onClearRating: () -> Unit = {},
     sortOrder: GameSortOrder = GameSortOrder.NAME_ASC,
     isGridView: Boolean = false,
+    showQuickPlayButton: Boolean = false,
     onGameClick: (Game) -> Unit,
+    onGameQuickPlay: ((Game) -> Unit)? = null,
     onGameLongClick: (Game) -> Unit,
     onGameFavoriteToggle: (Game, Boolean) -> Unit,
 ) {
@@ -84,7 +92,7 @@ fun GamesScreen(
     val games by viewModel.games.collectAsState()
     val availableGenres by viewModel.availableGenres.collectAsState()
 
-    var lastAppliedFilter by remember { mutableStateOf(Triple(sortOrder, selectedGenres, searchQuery)) }
+    var lastAppliedFilter by remember { mutableStateOf(listOf<Any?>(sortOrder, selectedGenres, searchQuery, selectedYear, selectedRating)) }
     var pendingScrollOldIds by remember { mutableStateOf<List<Int>?>(null) }
 
     LaunchedEffect(searchQuery) {
@@ -93,12 +101,18 @@ fun GamesScreen(
     LaunchedEffect(selectedGenres) {
         viewModel.changeSelectedGenres(selectedGenres)
     }
+    LaunchedEffect(selectedYear) {
+        viewModel.changeSelectedYear(selectedYear)
+    }
+    LaunchedEffect(selectedRating) {
+        viewModel.changeSelectedRating(selectedRating)
+    }
     LaunchedEffect(sortOrder) {
         viewModel.changeSortOrder(sortOrder)
     }
 
-    LaunchedEffect(sortOrder, selectedGenres, searchQuery) {
-        val current = Triple(sortOrder, selectedGenres, searchQuery)
+    LaunchedEffect(sortOrder, selectedGenres, searchQuery, selectedYear, selectedRating) {
+        val current = listOf<Any?>(sortOrder, selectedGenres, searchQuery, selectedYear, selectedRating)
         if (current != lastAppliedFilter) {
             lastAppliedFilter = current
             pendingScrollOldIds = games.map { it.game.id }
@@ -121,12 +135,52 @@ fun GamesScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (availableGenres.isNotEmpty()) {
+        if (availableGenres.isNotEmpty() || selectedYear != null || selectedRating != null) {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (selectedYear != null) {
+                    item(key = "filter_year") {
+                        FilterChip(
+                            selected = true,
+                            onClick = onClearYear,
+                            label = { Text(text = selectedYear) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = stringResource(R.string.close),
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                }
+                if (selectedRating != null) {
+                    item(key = "filter_rating") {
+                        FilterChip(
+                            selected = true,
+                            onClick = onClearRating,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = stringResource(R.string.content_desc_rating),
+                                    tint = Color(0xFFFFB300),
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            label = { Text(text = String.format(Locale.US, "%.1f", selectedRating)) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = stringResource(R.string.close),
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                }
                 item(key = "genre_all") {
                     FilterChip(
                         selected = selectedGenres.isEmpty(),
@@ -175,6 +229,9 @@ fun GamesScreen(
                         onClick = { onGameClick(game) },
                         onLongClick = { onGameLongClick(game) },
                         onFavoriteToggle = { isFavorite -> onGameFavoriteToggle(game, isFavorite) },
+                        onQuickPlayClick = if (showQuickPlayButton && onGameQuickPlay != null) {
+                            { onGameQuickPlay(game) }
+                        } else null,
                     )
                 }
             }
@@ -196,6 +253,9 @@ fun GamesScreen(
                         onClick = { onGameClick(game) },
                         onLongClick = { onGameLongClick(game) },
                         onFavoriteToggle = { isFavorite -> onGameFavoriteToggle(game, isFavorite) },
+                        onQuickPlayClick = if (showQuickPlayButton && onGameQuickPlay != null) {
+                            { onGameQuickPlay(game) }
+                        } else null,
                     )
                 }
             }
@@ -212,6 +272,7 @@ fun GameGridCard(
     onLongClick: () -> Unit,
     onFavoriteToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    onQuickPlayClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val coverUrl = game.displayCoverUrl()
@@ -296,6 +357,10 @@ fun GameGridCard(
                         tint = if (game.isFavorite) Color(0xFFFF5252) else Color.White.copy(alpha = 0.85f),
                         modifier = Modifier.size(14.dp),
                     )
+                }
+
+                if (onQuickPlayClick != null) {
+                    GameQuickPlayBadge(onClick = onQuickPlayClick)
                 }
             }
 

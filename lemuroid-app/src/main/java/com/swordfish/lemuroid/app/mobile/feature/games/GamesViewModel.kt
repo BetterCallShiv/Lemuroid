@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import java.util.Locale
 
 class GamesViewModel(
     private val retrogradeDb: RetrogradeDatabase,
@@ -35,6 +36,8 @@ class GamesViewModel(
     private val metaSystemId = MutableStateFlow(initialMetaSystem)
     private val searchQuery = MutableStateFlow("")
     private val selectedGenres = MutableStateFlow<Set<String>>(emptySet())
+    private val selectedYear = MutableStateFlow<String?>(null)
+    private val selectedRating = MutableStateFlow<Float?>(null)
     private val sortOrder = MutableStateFlow(GameSortOrder.NAME_ASC)
 
     fun changeSearchQuery(query: String) {
@@ -43,6 +46,14 @@ class GamesViewModel(
 
     fun changeSelectedGenres(genres: Set<String>) {
         selectedGenres.value = genres
+    }
+
+    fun changeSelectedYear(year: String?) {
+        selectedYear.value = year
+    }
+
+    fun changeSelectedRating(rating: Float?) {
+        selectedRating.value = rating
     }
 
     fun changeSortOrder(order: GameSortOrder) {
@@ -84,33 +95,50 @@ class GamesViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     val games: StateFlow<List<GameListItem>> =
         combine(
-            systemDbNames,
-            searchQuery.map { it.trim() },
-            selectedGenres,
-            sortOrder,
-        ) { systemIds, query, genres, order ->
-            FilterParams(systemIds, query, genres, order)
+            combine(systemDbNames, searchQuery.map { it.trim() }, selectedGenres) { systemIds, query, genres ->
+                Triple(systemIds, query, genres)
+            },
+            combine(sortOrder, selectedYear, selectedRating) { order, year, rating ->
+                Triple(order, year, rating)
+            },
+        ) { (systemIds, query, genres), (order, year, rating) ->
+            FilterParams(systemIds, query, genres, order, year, rating)
         }
-            .flatMapLatest { (systemIds, query, genres, order) ->
+            .flatMapLatest { (systemIds, query, genres, order, year, rating) ->
                 if (systemIds.isEmpty()) {
                     flowOf(emptyList())
                 } else {
                     val selectedLower = genres.map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+                    val targetYear = year?.trim()?.takeIf { it.isNotBlank() }
+                    val targetRatingText = rating?.let { String.format(Locale.US, "%.1f", it) }
+
                     retrogradeDb.gameDao().selectBySystemsSorted(
                         systemIds = systemIds,
                         query = query,
                         sortOrder = order.name,
                     ).map { list ->
-                        if (selectedLower.isEmpty()) {
+                        if (selectedLower.isEmpty() && targetYear == null && targetRatingText == null) {
                             list
                         } else {
                             list.filter { item ->
-                                val itemGenres = item.genres
-                                    ?.split(GENRE_SPLIT_REGEX)
-                                    ?.map { it.trim().lowercase() }
-                                    ?.toSet()
-                                    ?: emptySet()
-                                selectedLower.all { it in itemGenres }
+                                val matchesGenres = if (selectedLower.isEmpty()) {
+                                    true
+                                } else {
+                                    val itemGenres = item.genres
+                                        ?.split(GENRE_SPLIT_REGEX)
+                                        ?.map { it.trim().lowercase() }
+                                        ?.toSet()
+                                        ?: emptySet()
+                                    selectedLower.all { it in itemGenres }
+                                }
+                                val matchesYear = targetYear == null ||
+                                    item.releaseDate?.trim()?.startsWith(targetYear) == true
+                                val itemRating = item.rating
+                                val matchesRating = targetRatingText == null ||
+                                    (itemRating != null && itemRating > 0f &&
+                                        String.format(Locale.US, "%.1f", itemRating) == targetRatingText)
+
+                                matchesGenres && matchesYear && matchesRating
                             }
                         }
                     }
@@ -128,6 +156,8 @@ class GamesViewModel(
         val query: String,
         val genres: Set<String>,
         val sortOrder: GameSortOrder,
+        val year: String?,
+        val rating: Float?,
     )
 
     companion object {

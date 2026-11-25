@@ -109,6 +109,7 @@ private val STARTER_COLLECTION_RESOURCES = listOf(
 fun HomeScreen(
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel,
+    showQuickPlayButton: Boolean = false,
     onGameClick: (Game) -> Unit,
     onGamePlay: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
@@ -140,6 +141,7 @@ fun HomeScreen(
     HomeScreenContent(
         modifier = modifier,
         state = state.value,
+        showQuickPlayButton = showQuickPlayButton,
         onGameClicked = onGameClick,
         onGamePlay = onGamePlay,
         onGameLongClick = onGameLongClick,
@@ -166,6 +168,7 @@ fun HomeScreen(
 private fun HomeScreenContent(
     modifier: Modifier = Modifier,
     state: HomeViewModel.UIState,
+    showQuickPlayButton: Boolean,
     onGameClicked: (Game) -> Unit,
     onGamePlay: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
@@ -244,7 +247,9 @@ private fun HomeScreenContent(
             icon = Icons.Default.History,
             games = state.recentGames,
             ratingsByGameId = state.ratingsByGameId,
+            showQuickPlayButton = showQuickPlayButton,
             onGameClicked = onGameClicked,
+            onGamePlay = onGamePlay,
             onGameLongClick = onGameLongClick,
             onGameFavoriteToggle = onGameFavoriteToggle,
         )
@@ -253,11 +258,13 @@ private fun HomeScreenContent(
             CollectionsSection(
                 collections = state.collections,
                 ratingsByGameId = state.ratingsByGameId,
+                showQuickPlayButton = showQuickPlayButton,
                 onNewCollectionClick = { showCreateDialog = true },
                 onQuickCreateCollection = onCreateCollection,
                 onRenameCollection = { collectionToRename = it },
                 onDeleteCollection = { collectionToDelete = it },
                 onGameClicked = onGameClicked,
+                onGamePlay = onGamePlay,
                 onGameLongClick = onGameLongClick,
                 onGameFavoriteToggle = onGameFavoriteToggle,
             )
@@ -268,7 +275,9 @@ private fun HomeScreenContent(
             icon = Icons.Default.Favorite,
             games = state.favoritesGames,
             ratingsByGameId = state.ratingsByGameId,
+            showQuickPlayButton = showQuickPlayButton,
             onGameClicked = onGameClicked,
+            onGamePlay = onGamePlay,
             onGameLongClick = onGameLongClick,
             onGameFavoriteToggle = onGameFavoriteToggle,
         )
@@ -279,7 +288,9 @@ private fun HomeScreenContent(
             iconTint = Color(0xFFFFC107),
             games = state.topRatedGames,
             ratingsByGameId = state.ratingsByGameId,
+            showQuickPlayButton = showQuickPlayButton,
             onGameClicked = onGameClicked,
+            onGamePlay = onGamePlay,
             onGameLongClick = onGameLongClick,
             onGameFavoriteToggle = onGameFavoriteToggle,
             trailingAction = {
@@ -302,7 +313,9 @@ private fun HomeScreenContent(
             icon = Icons.Default.Explore,
             games = state.discoveryGames,
             ratingsByGameId = state.ratingsByGameId,
+            showQuickPlayButton = showQuickPlayButton,
             onGameClicked = onGameClicked,
+            onGamePlay = onGamePlay,
             onGameLongClick = onGameLongClick,
             onGameFavoriteToggle = onGameFavoriteToggle,
             trailingAction = {
@@ -324,11 +337,13 @@ private fun HomeScreenContent(
             CollectionsSection(
                 collections = state.collections,
                 ratingsByGameId = state.ratingsByGameId,
+                showQuickPlayButton = showQuickPlayButton,
                 onNewCollectionClick = { showCreateDialog = true },
                 onQuickCreateCollection = onCreateCollection,
                 onRenameCollection = { collectionToRename = it },
                 onDeleteCollection = { collectionToDelete = it },
                 onGameClicked = onGameClicked,
+                onGamePlay = onGamePlay,
                 onGameLongClick = onGameLongClick,
                 onGameFavoriteToggle = onGameFavoriteToggle,
             )
@@ -619,11 +634,13 @@ private fun ContinuePlayingHeroCard(
 private fun CollectionsSection(
     collections: List<CollectionWithGames>,
     ratingsByGameId: Map<Int, Float>,
+    showQuickPlayButton: Boolean,
     onNewCollectionClick: () -> Unit,
     onQuickCreateCollection: (String) -> Unit,
     onRenameCollection: (GameCollection) -> Unit,
     onDeleteCollection: (GameCollection) -> Unit,
     onGameClicked: (Game) -> Unit,
+    onGamePlay: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
     onGameFavoriteToggle: (Game, Boolean) -> Unit,
 ) {
@@ -721,9 +738,11 @@ private fun CollectionsSection(
                 CollectionShelf(
                     collectionWithGames = collectionWithGames,
                     ratingsByGameId = ratingsByGameId,
+                    showQuickPlayButton = showQuickPlayButton,
                     onRename = { onRenameCollection(collectionWithGames.collection) },
                     onDelete = { onDeleteCollection(collectionWithGames.collection) },
                     onGameClicked = onGameClicked,
+                    onGamePlay = onGamePlay,
                     onGameLongClick = onGameLongClick,
                     onGameFavoriteToggle = onGameFavoriteToggle,
                 )
@@ -737,9 +756,11 @@ private fun CollectionsSection(
 private fun CollectionShelf(
     collectionWithGames: CollectionWithGames,
     ratingsByGameId: Map<Int, Float>,
+    showQuickPlayButton: Boolean,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onGameClicked: (Game) -> Unit,
+    onGamePlay: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
     onGameFavoriteToggle: (Game, Boolean) -> Unit,
 ) {
@@ -859,6 +880,9 @@ private fun CollectionShelf(
                         onClick = { onGameClicked(game) },
                         onLongClick = { onGameLongClick(game) },
                         onFavoriteToggle = { isFavorite -> onGameFavoriteToggle(game, isFavorite) },
+                        onQuickPlayClick = if (showQuickPlayButton) {
+                            { onGamePlay(game) }
+                        } else null,
                     )
                 }
             }
@@ -873,7 +897,9 @@ private fun HomeRow(
     icon: ImageVector,
     games: List<Game>,
     ratingsByGameId: Map<Int, Float>,
+    showQuickPlayButton: Boolean,
     onGameClicked: (Game) -> Unit,
+    onGamePlay: (Game) -> Unit,
     onGameLongClick: (Game) -> Unit,
     onGameFavoriteToggle: (Game, Boolean) -> Unit,
     iconTint: Color = MaterialTheme.colorScheme.primary,
@@ -937,6 +963,9 @@ private fun HomeRow(
                     onClick = { onGameClicked(game) },
                     onLongClick = { onGameLongClick(game) },
                     onFavoriteToggle = { isFavorite -> onGameFavoriteToggle(game, isFavorite) },
+                    onQuickPlayClick = if (showQuickPlayButton) {
+                        { onGamePlay(game) }
+                    } else null,
                 )
             }
         }
