@@ -108,11 +108,7 @@ object ChtDiscoveryManager {
                                 val childName = cursor.getString(1)
                                 if (childName != null && childName.endsWith(".cht", ignoreCase = true)) {
                                     val childBase = childName.substringBeforeLast('.')
-                                    val matches = childBase.equals(romBaseName, ignoreCase = true) ||
-                                        childBase.startsWith(romBaseName, ignoreCase = true) ||
-                                        childBase.contains(romBaseName, ignoreCase = true) ||
-                                        romBaseName.contains(childBase, ignoreCase = true)
-                                    if (matches) {
+                                    if (matchesRomBaseName(childBase, romBaseName)) {
                                         val childUri = DocumentsContract.buildDocumentUriUsingTree(rootUri, childDocId)
                                         val bytes = context.contentResolver.openInputStream(childUri)?.use { it.readBytes() }
                                         if (bytes != null && bytes.isNotEmpty()) {
@@ -144,11 +140,7 @@ object ChtDiscoveryManager {
                 if (parent != null && parent.isDirectory) {
                     parent.listFiles()?.filter { it.isFile && it.name.endsWith(".cht", ignoreCase = true) }?.forEach { child ->
                         val childBase = child.nameWithoutExtension
-                        val matches = childBase.equals(romBaseName, ignoreCase = true) ||
-                            childBase.startsWith(romBaseName, ignoreCase = true) ||
-                            childBase.contains(romBaseName, ignoreCase = true) ||
-                            romBaseName.contains(childBase, ignoreCase = true)
-                        if (matches) {
+                        if (matchesRomBaseName(childBase, romBaseName)) {
                             val bytes = child.readBytes()
                             if (bytes.isNotEmpty()) {
                                 results.add(
@@ -259,9 +251,21 @@ object ChtDiscoveryManager {
         prefs.edit().remove("$PREFS_AUTO_CHT_HASH_PREFIX$gameId").apply()
     }
 
+    private fun matchesRomBaseName(childBase: String, romBaseName: String): Boolean {
+        return childBase.equals(romBaseName, ignoreCase = true) ||
+            (childBase.startsWith(romBaseName, ignoreCase = true) &&
+                !childBase[romBaseName.length].isLetterOrDigit())
+    }
+
     private fun getExternalFolders(context: Context): List<String> {
         val prefString = context.getString(com.swordfish.lemuroid.lib.R.string.pref_key_external_folders)
         val preferenceManager = SharedPreferencesHelper.getLegacySharedPreferences(context)
-        return preferenceManager.getStringSet(prefString, null)?.toList() ?: emptyList()
+        val folders = preferenceManager.getStringSet(prefString, null)?.toList().orEmpty()
+        if (folders.isNotEmpty()) {
+            return folders
+        }
+        val singleKey = context.getString(com.swordfish.lemuroid.lib.R.string.pref_key_extenral_folder)
+        val legacyFolder = preferenceManager.getString(singleKey, null)
+        return if (!legacyFolder.isNullOrBlank()) listOf(legacyFolder) else emptyList()
     }
 }

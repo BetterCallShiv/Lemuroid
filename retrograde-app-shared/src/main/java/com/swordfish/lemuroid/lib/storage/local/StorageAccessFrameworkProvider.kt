@@ -182,12 +182,13 @@ class StorageAccessFrameworkProvider(private val context: Context) : StorageProv
 
         val isZipped = originalDocument.isZipped() && originalDocument.name != game.fileName
 
-        val availablePatches = PatchManager.discoverPatches(context, game)
-        val enabledPatchIds = PatchManager.getEnabledPatchIds(context, game.id, availablePatches)
-        val activePatches = availablePatches.filter { it.isValid && it.id in enabledPatchIds }
-
-        if (activePatches.isNotEmpty()) {
-            return getGameRomFilesPatched(game, originalDocument, isZipped, dataFiles, activePatches)
+        val enabledPatchIds = PatchManager.getEnabledPatchIds(context, game.id)
+        if (enabledPatchIds.isNotEmpty()) {
+            val availablePatches = PatchManager.discoverPatches(context, game)
+            val activePatches = availablePatches.filter { it.isValid && it.id in enabledPatchIds }
+            if (activePatches.isNotEmpty()) {
+                return getGameRomFilesPatched(game, originalDocument, isZipped, dataFiles, activePatches)
+            }
         }
 
         return when {

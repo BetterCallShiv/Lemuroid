@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
+import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.library.db.entity.Game
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import timber.log.Timber
@@ -12,6 +13,17 @@ import java.util.zip.ZipInputStream
 
 object PatchManager {
     private const val PREFS_PATCHES_PREFIX = "pref_key_game_patches_"
+
+    private val NON_PATCHABLE_SYSTEMS = setOf(
+        SystemID.FBNEO.dbname,
+        SystemID.MAME2003PLUS.dbname,
+        SystemID.PSX.dbname,
+        SystemID.PSP.dbname,
+        SystemID.SEGACD.dbname,
+        SystemID.NDS.dbname,
+        SystemID.NINTENDO_3DS.dbname,
+        SystemID.DOS.dbname,
+    )
 
     fun getEnabledPatchIds(
         context: Context,
@@ -39,6 +51,10 @@ object PatchManager {
     }
 
     fun discoverPatches(context: Context, game: Game): List<RomPatch> {
+        if (game.systemId.lowercase() in NON_PATCHABLE_SYSTEMS) {
+            return emptyList()
+        }
+
         val patches = mutableListOf<RomPatch>()
         val fileUri = Uri.parse(game.fileUri)
         val isZipped = runCatching {
@@ -107,9 +123,8 @@ object PatchManager {
                                 if (childName != null && childName.endsWith(".ips", ignoreCase = true)) {
                                     val childBase = childName.substringBeforeLast('.')
                                     val matches = childBase.equals(romBaseName, ignoreCase = true) ||
-                                            childBase.startsWith(romBaseName, ignoreCase = true) ||
-                                            childBase.contains(romBaseName, ignoreCase = true) ||
-                                            romBaseName.contains(childBase, ignoreCase = true)
+                                        (childBase.startsWith(romBaseName, ignoreCase = true) &&
+                                            !childBase[romBaseName.length].isLetterOrDigit())
                                     if (matches) {
                                         val childUri = DocumentsContract.buildDocumentUriUsingTree(rootUri, childDocId)
                                         val isValid = runCatching {
@@ -173,6 +188,12 @@ object PatchManager {
     private fun getExternalFolders(context: Context): List<String> {
         val prefString = context.getString(com.swordfish.lemuroid.lib.R.string.pref_key_external_folders)
         val preferenceManager = SharedPreferencesHelper.getLegacySharedPreferences(context)
-        return preferenceManager.getStringSet(prefString, null)?.toList() ?: emptyList()
+        val folders = preferenceManager.getStringSet(prefString, null)?.toList().orEmpty()
+        if (folders.isNotEmpty()) {
+            return folders
+        }
+        val singleKey = context.getString(com.swordfish.lemuroid.lib.R.string.pref_key_extenral_folder)
+        val legacyFolder = preferenceManager.getString(singleKey, null)
+        return if (!legacyFolder.isNullOrBlank()) listOf(legacyFolder) else emptyList()
     }
 }

@@ -8,9 +8,11 @@ import android.net.Uri
 import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.documentfile.provider.DocumentFile
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.mobile.shared.NotificationsManager
 import com.swordfish.lemuroid.common.kotlin.calculateRomCrc32
+import com.swordfish.lemuroid.common.kotlin.isZipped
 import com.swordfish.lemuroid.lib.library.MetaSystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -391,7 +393,10 @@ class BatchScraperManager(
                 game.systemId.equals("mame2003plus", ignoreCase = true)
 
             val isZip = game.fileUri.endsWith(".zip", ignoreCase = true) ||
-                game.fileName.endsWith(".zip", ignoreCase = true)
+                game.fileName.endsWith(".zip", ignoreCase = true) ||
+                (uri != null && uri.scheme == "content" && runCatching {
+                    DocumentFile.fromSingleUri(appContext, uri)?.isZipped() == true
+                }.getOrDefault(false))
 
             if (uri != null) {
                 runCatching {

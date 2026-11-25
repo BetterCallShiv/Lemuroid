@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,6 +55,7 @@ class GameDetailViewModel(
     data class FileMetadata(
         val actualFileName: String? = null,
         val fileSizeFormatted: String? = null,
+        val fileSizeBytes: Long? = null,
         val crc32: String? = null,
     )
 
@@ -76,6 +78,7 @@ class GameDetailViewModel(
     private val isScrapingFlow = MutableStateFlow(false)
     private val fileMetadataFlow = MutableStateFlow(FileMetadata())
     private var hasAttemptedInitialScrape = false
+    private val metadataJob: Job
     private var scrapeJob: Job? = null
 
     private val gameWithDetailsFlow = retrogradeDb.gameDetailsDao()
@@ -110,7 +113,7 @@ class GameDetailViewModel(
     )
 
     init {
-        viewModelScope.launch(Dispatchers.IO) {
+        metadataJob = viewModelScope.launch(Dispatchers.IO) {
             val game = gameWithDetailsFlow.first()?.game ?: return@launch
             runCatching {
                 ChtDiscoveryManager.syncDiscoveredCheats(appContext, game, retrogradeDb.cheatDao())
@@ -148,15 +151,21 @@ class GameDetailViewModel(
                 fileMetadataFlow.value = fileMetadataFlow.value.copy(
                     actualFileName = diskName,
                     fileSizeFormatted = formattedSize,
+                    fileSizeBytes = diskSizeBytes,
                 )
 
                 val isArcadeZip = game.systemId.equals("fbneo", ignoreCase = true) ||
                     game.systemId.equals("mame2003plus", ignoreCase = true)
+                val isZip = game.fileUri.endsWith(".zip", ignoreCase = true) ||
+                    game.fileName.endsWith(".zip", ignoreCase = true) ||
+                    diskName?.endsWith(".zip", ignoreCase = true) == true
                 val computedCrc = runCatching {
                     appContext.contentResolver.openInputStream(uri)?.use { stream ->
                         stream.calculateRomCrc32(
                             fileName = diskName ?: game.fileName,
                             isArcadeZip = isArcadeZip,
+                            isZipArchive = isZip,
+                            targetEntryName = game.fileName,
                         ).uppercase()
                     }
                 }.getOrNull()?.takeIf { it.isNotBlank() && it != "0" }
@@ -181,7 +190,8 @@ class GameDetailViewModel(
         }
         achievementsJob = viewModelScope.launch(Dispatchers.IO) {
             val game = gameWithDetailsFlow.first()?.game ?: return@launch
-            val crc = fileMetadataFlow.first().crc32
+            metadataJob.join()
+            val crc = fileMetadataFlow.value.crc32
             retroAchievementsRepository.getAchievementsFlow(game, crc).collect { state ->
                 _achievementsState.value = state
             }
@@ -192,6 +202,7 @@ class GameDetailViewModel(
         achievementsJob?.cancel()
         achievementsJob = viewModelScope.launch(Dispatchers.IO) {
             val game = gameWithDetailsFlow.first()?.game ?: return@launch
+            metadataJob.join()
             val crc = fileMetadataFlow.value.crc32
             retroAchievementsRepository.getAchievementsFlow(game, crc).collect { state ->
                 _achievementsState.value = state
@@ -201,8 +212,9 @@ class GameDetailViewModel(
 
     fun rescrape() {
         val game = uiState.value.gameWithDetails?.game ?: return
-        scrapeJob?.cancel()
+        val previousJob = scrapeJob
         scrapeJob = viewModelScope.launch {
+            previousJob?.cancelAndJoin()
             scrapeGame(game, force = true)
         }
     }
@@ -238,28 +250,10 @@ class GameDetailViewModel(
                 ?.filter { mediaStorageManager.isMediaUriValid(it) }
                 ?: emptyList()
 
-            val uri = runCatching { Uri.parse(game.fileUri) }.getOrNull()
-            var crc: String? = null
-            var fileSize: Long? = null
-
-            val isArcadeZip = game.systemId.equals("fbneo", ignoreCase = true) ||
-                game.systemId.equals("mame2003plus", ignoreCase = true)
-
-            if (uri != null) {
-                runCatching {
-                    appContext.contentResolver.openInputStream(uri)?.use { stream ->
-                        crc = stream.calculateRomCrc32(
-                            fileName = game.fileName,
-                            isArcadeZip = isArcadeZip,
-                        )
-                    }
-                }
-                runCatching {
-                    appContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                        fileSize = pfd.statSize.takeIf { it > 0 }
-                    }
-                }
-            }
+            metadataJob.join()
+            val meta = fileMetadataFlow.value
+            val crc = meta.crc32
+            val fileSize = meta.fileSizeBytes
 
             val libretroRom = if (!crc.isNullOrBlank() && crc != "0") {
                 runCatching {

@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.lib.backup
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.StatFs
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
@@ -19,6 +20,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
@@ -427,7 +429,7 @@ class BackupManager(
                 while (entry != null) {
                     val name = entry.name.replace('\\', '/')
 
-                    if (name.contains("..")) {
+                    if (entry.isDirectory || name.contains("..")) {
                         zipIn.closeEntry()
                         entry = zipIn.nextEntry
                         continue
@@ -454,35 +456,31 @@ class BackupManager(
                         }
                         name.startsWith("saves/") -> {
                             val rel = name.removePrefix("saves/")
-                            if (rel.isNotEmpty()) {
-                                val dest = File(savesDir, rel)
-                                if (overwriteSaves || !dest.exists()) {
-                                    extractEntryToFile(zipIn, dest)
-                                    savesRestored++
-                                }
+                            val dest = resolveSafeZipTarget(savesDir, rel)
+                            if (dest != null && (overwriteSaves || !dest.exists())) {
+                                extractEntryToFile(zipIn, dest)
+                                savesRestored++
                             }
                         }
                         name.startsWith("states/") -> {
                             val rel = name.removePrefix("states/")
-                            if (rel.isNotEmpty()) {
-                                val dest = File(statesDir, rel)
-                                if (overwriteSaves || !dest.exists()) {
-                                    extractEntryToFile(zipIn, dest)
-                                    statesRestored++
-                                }
+                            val dest = resolveSafeZipTarget(statesDir, rel)
+                            if (dest != null && (overwriteSaves || !dest.exists())) {
+                                extractEntryToFile(zipIn, dest)
+                                statesRestored++
                             }
                         }
                         name.startsWith("state-previews/") -> {
                             val rel = name.removePrefix("state-previews/")
-                            if (rel.isNotEmpty()) {
-                                val dest = File(previewsDir, rel)
+                            val dest = resolveSafeZipTarget(previewsDir, rel)
+                            if (dest != null) {
                                 extractEntryToFile(zipIn, dest)
                             }
                         }
                         name.startsWith("media/") -> {
                             val rel = name.removePrefix("media/")
-                            if (rel.isNotEmpty()) {
-                                val dest = File(mediaDir, rel)
+                            val dest = resolveSafeZipTarget(mediaDir, rel)
+                            if (dest != null) {
                                 extractEntryToFile(zipIn, dest)
                                 mediaRestored++
                             }
@@ -665,6 +663,18 @@ class BackupManager(
         return bytes.size.toLong()
     }
 
+    private fun resolveSafeZipTarget(baseDir: File, relativePath: String): File? {
+        if (relativePath.isEmpty()) return null
+        val baseCanonical = baseDir.canonicalPath
+        val dest = File(baseDir, relativePath)
+        val destCanonical = dest.canonicalPath
+        if (!destCanonical.startsWith(baseCanonical + File.separator)) {
+            Timber.w("Skipping unsafe zip entry path: $relativePath")
+            return null
+        }
+        return dest
+    }
+
     private fun extractEntryToFile(zipIn: ZipInputStream, destFile: File) {
         destFile.parentFile?.mkdirs()
         FileOutputStream(destFile).buffered().use { out ->
@@ -672,17 +682,13 @@ class BackupManager(
         }
     }
 
-    private fun exportSettingsToJson(includeCredentials: Boolean): String {
-        val harmonyPrefs = SharedPreferencesHelper.getSharedPreferences(appContext)
-        val legacyPrefs = SharedPreferencesHelper.getLegacySharedPreferences(appContext)
-
-        val merged = mutableMapOf<String, Any>()
-        legacyPrefs.all.forEach { (k, v) -> if (v != null) merged[k] = v }
-        harmonyPrefs.all.forEach { (k, v) -> if (v != null) merged[k] = v }
-
-        val jsonObject = buildJsonObject {
-            merged.forEach { (key, value) ->
-                if (!includeCredentials && isCredentialKey(key)) {
+    private fun prefsToJsonObject(
+        prefs: SharedPreferences,
+        includeCredentials: Boolean,
+    ): JsonObject {
+        return buildJsonObject {
+            prefs.all.forEach { (key, value) ->
+                if (value == null || (!includeCredentials && isCredentialKey(key))) {
                     return@forEach
                 }
                 when (value) {
@@ -697,29 +703,86 @@ class BackupManager(
                 }
             }
         }
-        return json.encodeToString(JsonObject.serializer(), jsonObject)
+    }
+
+    private fun applyJsonObjectToEditor(
+        jsonObject: JsonObject,
+        editor: SharedPreferences.Editor,
+    ) {
+        jsonObject.forEach { (key, element) ->
+            putJsonEntry(editor, key, element)
+        }
+    }
+
+    private fun putJsonEntry(
+        editor: SharedPreferences.Editor,
+        key: String,
+        element: kotlinx.serialization.json.JsonElement,
+    ) {
+        if (element is JsonPrimitive) {
+            if (element.isString) {
+                editor.putString(key, element.content)
+            } else {
+                element.booleanOrNull?.let { editor.putBoolean(key, it) }
+                    ?: element.intOrNull?.let { editor.putInt(key, it) }
+                    ?: element.longOrNull?.let { editor.putLong(key, it) }
+                    ?: element.floatOrNull?.let { editor.putFloat(key, it) }
+                    ?: editor.putString(key, element.content)
+            }
+        } else if (element is JsonArray) {
+            val set = element.mapNotNull { (it as? JsonPrimitive)?.content }.toSet()
+            editor.putStringSet(key, set)
+        }
+    }
+
+    private fun exportSettingsToJson(includeCredentials: Boolean): String {
+        val harmonyPrefs = SharedPreferencesHelper.getSharedPreferences(appContext)
+        val legacyPrefs = SharedPreferencesHelper.getLegacySharedPreferences(appContext)
+
+        val root = buildJsonObject {
+            put(HARMONY_PREFS_SECTION, prefsToJsonObject(harmonyPrefs, includeCredentials))
+            put(LEGACY_PREFS_SECTION, prefsToJsonObject(legacyPrefs, includeCredentials))
+        }
+        return json.encodeToString(JsonObject.serializer(), root)
     }
 
     private fun restoreSettingsFromJson(jsonStr: String): Boolean {
         return runCatching {
             val jsonObject = json.decodeFromString(JsonObject.serializer(), jsonStr)
             val harmonyPrefs = SharedPreferencesHelper.getSharedPreferences(appContext)
-            val editor = harmonyPrefs.edit()
+            val legacyPrefs = SharedPreferencesHelper.getLegacySharedPreferences(appContext)
 
-            jsonObject.forEach { (key, element) ->
-                if (element is JsonPrimitive) {
-                    element.booleanOrNull?.let { editor.putBoolean(key, it) }
-                        ?: element.intOrNull?.let { editor.putInt(key, it) }
-                        ?: element.longOrNull?.let { editor.putLong(key, it) }
-                        ?: editor.putString(key, element.content)
-                } else if (element is JsonArray) {
-                    val set = element.mapNotNull { (it as? JsonPrimitive)?.content }.toSet()
-                    editor.putStringSet(key, set)
+            val harmonySection = jsonObject[HARMONY_PREFS_SECTION] as? JsonObject
+            val legacySection = jsonObject[LEGACY_PREFS_SECTION] as? JsonObject
+
+            if (harmonySection != null || legacySection != null) {
+                harmonySection?.let {
+                    harmonyPrefs.edit().also { editor -> applyJsonObjectToEditor(it, editor) }.apply()
                 }
+                legacySection?.let {
+                    legacyPrefs.edit().also { editor -> applyJsonObjectToEditor(it, editor) }.apply()
+                }
+            } else {
+                val legacyKeys = setOf(
+                    appContext.getString(com.swordfish.lemuroid.lib.R.string.pref_key_external_folders),
+                    appContext.getString(com.swordfish.lemuroid.lib.R.string.pref_key_extenral_folder),
+                )
+                val harmonyEditor = harmonyPrefs.edit()
+                val legacyEditor = legacyPrefs.edit()
+                jsonObject.forEach { (key, element) ->
+                    val targetEditor = if (key in legacyKeys) legacyEditor else harmonyEditor
+                    putJsonEntry(targetEditor, key, element)
+                }
+                harmonyEditor.apply()
+                legacyEditor.apply()
             }
-            editor.apply()
             true
         }.getOrDefault(false)
+    }
+
+    companion object {
+        private const val HARMONY_PREFS_SECTION = "__harmony__"
+        private const val LEGACY_PREFS_SECTION = "__legacy__"
     }
 
     private fun isCredentialKey(key: String): Boolean {

@@ -38,13 +38,31 @@ object DocumentFileParser {
         context: Context,
         baseStorageFile: BaseStorageFile,
     ): StorageFile {
-        return if (baseStorageFile.extension.equals("zip", ignoreCase = true) && !isArcadeArchive(baseStorageFile)) {
-            Timber.d("Detected zip file. ${baseStorageFile.name}")
-            parseZipFile(context, baseStorageFile)
-        } else {
-            Timber.d("Detected standard file. ${baseStorageFile.name}")
-            parseStandardFile(context, baseStorageFile)
+        val isZip = baseStorageFile.extension.equals("zip", ignoreCase = true)
+        return when {
+            isZip && isArcadeArchive(baseStorageFile) -> parseArcadeFile(baseStorageFile)
+            isZip -> {
+                Timber.d("Detected zip file. ${baseStorageFile.name}")
+                parseZipFile(context, baseStorageFile)
+            }
+            else -> {
+                Timber.d("Detected standard file. ${baseStorageFile.name}")
+                parseStandardFile(context, baseStorageFile)
+            }
         }
+    }
+
+    private fun parseArcadeFile(baseStorageFile: BaseStorageFile): StorageFile {
+        Timber.d("Detected arcade archive. ${baseStorageFile.name}")
+        return StorageFile(
+            name = baseStorageFile.name,
+            size = baseStorageFile.size,
+            crc = null,
+            serial = null,
+            uri = baseStorageFile.uri,
+            path = baseStorageFile.uri.path,
+            systemID = null,
+        )
     }
 
     internal fun isArcadeArchive(baseStorageFile: BaseStorageFile): Boolean {
@@ -53,8 +71,11 @@ object DocumentFileParser {
 
     internal fun isArcadePath(path: String?): Boolean {
         if (path.isNullOrBlank()) return false
-        val normalized = path.lowercase()
-        return ARCADE_SYSTEM_FOLDERS.any { normalized.contains(it) }
+        val segments = path.lowercase()
+            .split('/', '\\', ':')
+            .filter { it.isNotBlank() }
+        if (segments.size <= 1) return false
+        return segments.dropLast(1).any { it in ARCADE_SYSTEM_FOLDERS }
     }
 
     private fun parseZipFile(

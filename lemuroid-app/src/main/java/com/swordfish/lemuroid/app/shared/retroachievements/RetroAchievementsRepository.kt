@@ -13,6 +13,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import timber.log.Timber
 import java.io.File
+import java.io.FileOutputStream
+import java.io.PushbackInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,6 +59,10 @@ sealed interface AchievementsUiState {
 }
 
 class RetroAchievementsRepository(private val context: Context) {
+
+    companion object {
+        private const val MAX_BUFFER_HASH_BYTES = 16L * 1024L * 1024L
+    }
 
     private val prefs = RetroAchievementsPreferences(context)
     private val client = OkHttpClient.Builder()
@@ -104,66 +110,27 @@ class RetroAchievementsRepository(private val context: Context) {
             }
         }
 
-        val candidateHashes = mutableListOf<String>()
         val cachedHash = prefs.getCachedGameHash(game.fileName)
             ?: prefs.getCachedGameHash(game.fileUri)
         if (!cachedHash.isNullOrEmpty()) {
-            candidateHashes.add(cachedHash)
+            val resolved = tryResolveAchievementsWithHash(cachedHash, game, keys, username, token)
+            if (resolved != null) {
+                emit(AchievementsUiState.Success(resolved))
+                return@flow
+            }
         }
 
         val uri = android.net.Uri.parse(game.fileUri)
-        candidateHashes.addAll(computeRomMd5Hashes(game, uri))
-
-        val distinctHashes = candidateHashes.distinct()
+        val distinctHashes = computeRomMd5Hashes(game, uri)
+            .filterNot { it == cachedHash }
+            .distinct()
         Timber.d("RetroAchievements: Candidate hashes for '${game.title}': $distinctHashes")
 
         for (hash in distinctHashes) {
-            try {
-                val form = FormBody.Builder()
-                    .add("r", "achievementsets")
-                    .add("m", hash)
-                    .add("v", "2")
-                    .add("u", username)
-                    .add("t", token)
-                    .build()
-
-                val req = Request.Builder()
-                    .url("https://retroachievements.org/dorequest.php")
-                    .post(form)
-                    .build()
-
-                val body = client.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) resp.body?.string() else null
-                }
-
-                if (!body.isNullOrEmpty()) {
-                    val root = JSONObject(body)
-                    if (root.optBoolean("Success", false)) {
-                        val resolvedId = root.optInt(
-                            "GameId",
-                            root.optInt("GameID", root.optJSONObject("Game")?.optInt("ID", 0) ?: 0)
-                        )
-                        if (resolvedId > 0) {
-                            Timber.i("RetroAchievements: Resolved game ID $resolvedId using achievementsets and hash $hash")
-                            prefs.setCachedGameId(keys, resolvedId)
-                            prefs.setCachedGameHash(game.fileName, hash)
-                            prefs.setCachedGameHash(game.fileUri, hash)
-
-                            val unlockedMap = mutableMapOf<Int, Long>()
-                            val hardcoreSet = mutableSetOf<Int>()
-                            fetchUserUnlocks(resolvedId, username, token, unlockedMap, hardcoreSet)
-
-                            val parsed = parseAchievementsJson(resolvedId, body, unlockedMap, hardcoreSet)
-                            if (parsed != null && parsed.totalCount > 0) {
-                                saveToDiskCache(resolvedId, body, unlockedMap, hardcoreSet)
-                                emit(AchievementsUiState.Success(parsed))
-                                return@flow
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Timber.w(e, "RetroAchievements: achievementsets request failed for hash $hash")
+            val resolved = tryResolveAchievementsWithHash(hash, game, keys, username, token)
+            if (resolved != null) {
+                emit(AchievementsUiState.Success(resolved))
+                return@flow
             }
         }
 
@@ -175,6 +142,62 @@ class RetroAchievementsRepository(private val context: Context) {
             emit(AchievementsUiState.NoAchievements)
         }
     }.flowOn(Dispatchers.IO)
+
+    private fun tryResolveAchievementsWithHash(
+        hash: String,
+        game: Game,
+        keys: List<String>,
+        username: String,
+        token: String,
+    ): GameAchievementsData? {
+        try {
+            val form = FormBody.Builder()
+                .add("r", "achievementsets")
+                .add("m", hash)
+                .add("v", "2")
+                .add("u", username)
+                .add("t", token)
+                .build()
+
+            val req = Request.Builder()
+                .url("https://retroachievements.org/dorequest.php")
+                .post(form)
+                .build()
+
+            val body = client.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) resp.body?.string() else null
+            }
+
+            if (!body.isNullOrEmpty()) {
+                val root = JSONObject(body)
+                if (root.optBoolean("Success", false)) {
+                    val resolvedId = root.optInt(
+                        "GameId",
+                        root.optInt("GameID", root.optJSONObject("Game")?.optInt("ID", 0) ?: 0)
+                    )
+                    if (resolvedId > 0) {
+                        Timber.i("RetroAchievements: Resolved game ID $resolvedId using achievementsets and hash $hash")
+                        prefs.setCachedGameId(keys, resolvedId)
+                        prefs.setCachedGameHash(game.fileName, hash)
+                        prefs.setCachedGameHash(game.fileUri, hash)
+
+                        val unlockedMap = mutableMapOf<Int, Long>()
+                        val hardcoreSet = mutableSetOf<Int>()
+                        fetchUserUnlocks(resolvedId, username, token, unlockedMap, hardcoreSet)
+
+                        val parsed = parseAchievementsJson(resolvedId, body, unlockedMap, hardcoreSet)
+                        if (parsed != null && parsed.totalCount > 0) {
+                            saveToDiskCache(resolvedId, body, unlockedMap, hardcoreSet)
+                            return parsed
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "RetroAchievements: achievementsets request failed for hash $hash")
+        }
+        return null
+    }
 
     private fun fetchUserUnlocks(
         gameId: Int,
@@ -387,14 +410,19 @@ class RetroAchievementsRepository(private val context: Context) {
     }
 
     private fun computeRomMd5Hashes(game: Game, uri: android.net.Uri): List<String> {
-        val result = mutableListOf<String>()
         val consoleId = RetroAchievementsManager.getConsoleId(game.systemId)
-        if (consoleId <= 0) return result
+        if (consoleId <= 0) return emptyList()
+
+        val isArcade = game.systemId.equals("fbneo", ignoreCase = true) ||
+            game.systemId.equals("mame2003plus", ignoreCase = true) ||
+            game.systemId.equals("arcade", ignoreCase = true)
 
         val possibleCacheFolders = listOf("storage-framework-games", "local-storage-games")
         for (folder in possibleCacheFolders) {
             val cachedFile = com.swordfish.lemuroid.lib.storage.local.GameCacheUtils.getCacheFileForGame(folder, context, game)
-            if (cachedFile.exists() && cachedFile.length() > 0) {
+            if (cachedFile.exists() && cachedFile.length() > 0 &&
+                (isArcade || !cachedFile.name.endsWith(".zip", ignoreCase = true))
+            ) {
                 try {
                     val hash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
                         consoleId,
@@ -403,7 +431,7 @@ class RetroAchievementsRepository(private val context: Context) {
                     )
                     if (!hash.isNullOrEmpty()) {
                         Timber.d("RetroAchievements: Native hash generated from cached file: $hash for console $consoleId")
-                        result.add(hash)
+                        return listOf(hash)
                     }
                 } catch (t: Throwable) {
                     Timber.w(t, "RetroAchievements: Failed to hash cached file")
@@ -412,7 +440,9 @@ class RetroAchievementsRepository(private val context: Context) {
         }
 
         val directPath = if (uri.scheme == "file") uri.path ?: "" else if (uri.toString().startsWith("/")) uri.toString() else ""
-        if (directPath.isNotEmpty() && File(directPath).exists()) {
+        if (directPath.isNotEmpty() && File(directPath).exists() &&
+            (isArcade || !directPath.endsWith(".zip", ignoreCase = true))
+        ) {
             try {
                 val hash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
                     consoleId,
@@ -421,122 +451,123 @@ class RetroAchievementsRepository(private val context: Context) {
                 )
                 if (!hash.isNullOrEmpty()) {
                     Timber.d("RetroAchievements: Native hash generated from direct file: $hash for console $consoleId")
-                    result.add(hash)
+                    return listOf(hash)
                 }
             } catch (t: Throwable) {
                 Timber.w(t, "RetroAchievements: Failed to hash direct file")
             }
         }
 
+        val result = mutableListOf<String>()
         try {
-            val rawStreamBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            if (rawStreamBytes != null && rawStreamBytes.isNotEmpty()) {
-                val isZip = (rawStreamBytes.size > 4 &&
-                    rawStreamBytes[0] == 0x50.toByte() &&
-                    rawStreamBytes[1] == 0x4B.toByte() &&
-                    rawStreamBytes[2] == 0x03.toByte() &&
-                    rawStreamBytes[3] == 0x04.toByte()) ||
+            context.contentResolver.openInputStream(uri)?.use { rawStream ->
+                val pushback = PushbackInputStream(rawStream, 4)
+                val header = ByteArray(4)
+                val headerLen = pushback.read(header)
+                if (headerLen > 0) {
+                    pushback.unread(header, 0, headerLen)
+                }
+                val hasZipMagic = headerLen == 4 &&
+                    header[0] == 0x50.toByte() &&
+                    header[1] == 0x4B.toByte() &&
+                    header[2] == 0x03.toByte() &&
+                    header[3] == 0x04.toByte()
+
+                val isZip = hasZipMagic ||
                     game.fileUri.endsWith(".zip", ignoreCase = true) ||
                     game.fileName.endsWith(".zip", ignoreCase = true)
 
-                val isArcade = game.systemId.equals("fbneo", ignoreCase = true) ||
-                    game.systemId.equals("mame2003plus", ignoreCase = true) ||
-                    game.systemId.equals("arcade", ignoreCase = true)
-
                 if (isArcade) {
-                    val zipName = if (game.fileName.endsWith(".zip", ignoreCase = true)) {
+                    val baseZipName = if (game.fileName.endsWith(".zip", ignoreCase = true)) {
                         game.fileName
                     } else {
                         "${game.fileName}.zip"
                     }
-                    val tempArcadeFile = File(context.cacheDir, zipName)
+                    val tempDir = File(context.cacheDir, "ra_arcade_${System.nanoTime()}").apply { mkdirs() }
+                    val tempArcadeFile = File(tempDir, File(baseZipName).name)
                     try {
-                        tempArcadeFile.writeBytes(rawStreamBytes)
-                        val fileHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
-                            consoleId,
-                            tempArcadeFile.absolutePath,
-                            null
-                        )
-                        if (!fileHash.isNullOrEmpty()) {
-                            Timber.d("RetroAchievements: Native hash generated for arcade zip: $fileHash for console $consoleId")
-                            result.add(fileHash)
+                        FileOutputStream(tempArcadeFile).buffered().use { out ->
+                            pushback.copyTo(out)
+                        }
+                        if (tempArcadeFile.length() > 0) {
+                            val fileHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
+                                consoleId,
+                                tempArcadeFile.absolutePath,
+                                null
+                            )
+                            if (!fileHash.isNullOrEmpty()) {
+                                Timber.d("RetroAchievements: Native hash generated for arcade zip: $fileHash for console $consoleId")
+                                result.add(fileHash)
+                            }
                         }
                     } catch (t: Throwable) {
                         Timber.w(t, "RetroAchievements: Failed to hash arcade zip")
                     } finally {
-                        try {
-                            tempArcadeFile.delete()
-                        } catch (ignored: Throwable) {}
+                        runCatching { tempDir.deleteRecursively() }
                     }
-                } else {
-                    val romBytes: ByteArray? = if (isZip) {
-                        ZipInputStream(rawStreamBytes.inputStream()).use { zip ->
+                } else if (isZip) {
+                    var exactTempFile: File? = null
+                    var fallbackTempFile: File? = null
+                    try {
+                        val romExtensions = setOf(
+                            "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "smd",
+                            "gen", "bin", "pce", "ngp", "ngc", "ws", "wsc", "z64", "n64", "nds"
+                        )
+                        ZipInputStream(pushback).use { zip ->
                             var entry = zip.nextEntry
-                            var extracted: ByteArray? = null
-                            var fallbackExtracted: ByteArray? = null
                             while (entry != null) {
-                                if (!entry.isDirectory) {
-                                    val entryBytes = zip.readBytes()
-                                    if (entry.name.equals(game.fileName, ignoreCase = true) ||
-                                        entry.name.substringAfterLast('/').equals(game.fileName, ignoreCase = true)
-                                    ) {
-                                        extracted = entryBytes
+                                val entryName = entry.name
+                                val isMacOsMeta = entry.isDirectory ||
+                                    entryName.startsWith("__MACOSX/", ignoreCase = true) ||
+                                    entryName.contains("/__MACOSX/", ignoreCase = true) ||
+                                    entryName.substringAfterLast('/').startsWith("._")
+                                if (!isMacOsMeta) {
+                                    val isExactMatch = entryName.equals(game.fileName, ignoreCase = true) ||
+                                        entryName.substringAfterLast('/').equals(game.fileName, ignoreCase = true)
+                                    val ext = entryName.substringAfterLast('.', "").lowercase()
+                                    val suffix = if (ext.isNotEmpty()) ".$ext" else ".${game.systemId}"
+
+                                    if (isExactMatch) {
+                                        val tmp = File.createTempFile("ra_rom_", suffix, context.cacheDir)
+                                        FileOutputStream(tmp).buffered().use { out -> zip.copyTo(out) }
+                                        exactTempFile = tmp
+                                        fallbackTempFile?.delete()
+                                        fallbackTempFile = null
                                         break
-                                    }
-                                    val ext = entry.name.substringAfterLast('.', "").lowercase()
-                                    val isRom = ext in setOf(
-                                        "nes", "sfc", "smc", "gb", "gbc", "gba", "md", "smd",
-                                        "gen", "bin", "pce", "ngp", "ngc", "ws", "wsc", "z64", "n64", "nds"
-                                    )
-                                    if (isRom && fallbackExtracted == null) {
-                                        fallbackExtracted = entryBytes
+                                    } else if (fallbackTempFile == null && ext in romExtensions) {
+                                        val tmp = File.createTempFile("ra_rom_", suffix, context.cacheDir)
+                                        FileOutputStream(tmp).buffered().use { out -> zip.copyTo(out) }
+                                        fallbackTempFile = tmp
                                     }
                                 }
                                 entry = zip.nextEntry
                             }
-                            extracted ?: fallbackExtracted
                         }
-                    } else {
-                        rawStreamBytes
-                    }
 
-                    if (romBytes != null && romBytes.isNotEmpty()) {
-                        val extension = if (game.fileName.contains('.')) {
-                            "." + game.fileName.substringAfterLast('.')
-                        } else {
-                            ".${game.systemId}"
+                        val targetFile = exactTempFile ?: fallbackTempFile
+                        if (targetFile != null && targetFile.length() > 0) {
+                            hashTempRomFile(consoleId, targetFile, result)
                         }
-                        val tempRomFile = File(context.cacheDir, "temp_ra_rom$extension")
-                        try {
-                            tempRomFile.writeBytes(romBytes)
-                            val fileHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
-                                consoleId,
-                                tempRomFile.absolutePath,
-                                null
-                            )
-                            if (!fileHash.isNullOrEmpty()) {
-                                Timber.d("RetroAchievements: Native hash generated via temp file: $fileHash for console $consoleId")
-                                result.add(fileHash)
-                            }
-                        } catch (t: Throwable) {
-                            Timber.w(t, "RetroAchievements: Failed to hash via temp file")
-                        } finally {
-                            try {
-                                tempRomFile.delete()
-                            } catch (ignored: Throwable) {}
+                    } finally {
+                        runCatching { exactTempFile?.delete() }
+                        runCatching { fallbackTempFile?.delete() }
+                    }
+                } else {
+                    val extension = if (game.fileName.contains('.')) {
+                        "." + game.fileName.substringAfterLast('.')
+                    } else {
+                        ".${game.systemId}"
+                    }
+                    val tempRomFile = File.createTempFile("ra_rom_", extension, context.cacheDir)
+                    try {
+                        FileOutputStream(tempRomFile).buffered().use { out ->
+                            pushback.copyTo(out)
                         }
-                        try {
-                            val bufferHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
-                                consoleId,
-                                "",
-                                romBytes
-                            )
-                            if (!bufferHash.isNullOrEmpty()) {
-                                result.add(bufferHash)
-                            }
-                        } catch (t: Throwable) {
-                            Timber.w(t, "RetroAchievements: Failed to hash via buffer")
+                        if (tempRomFile.length() > 0) {
+                            hashTempRomFile(consoleId, tempRomFile, result)
                         }
+                    } finally {
+                        runCatching { tempRomFile.delete() }
                     }
                 }
             }
@@ -545,6 +576,43 @@ class RetroAchievementsRepository(private val context: Context) {
         }
 
         return result.distinct()
+    }
+
+    private fun hashTempRomFile(
+        consoleId: Int,
+        tempRomFile: File,
+        result: MutableList<String>,
+    ) {
+        try {
+            val fileHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
+                consoleId,
+                tempRomFile.absolutePath,
+                null
+            )
+            if (!fileHash.isNullOrEmpty()) {
+                Timber.d("RetroAchievements: Native hash generated via temp file: $fileHash for console $consoleId")
+                result.add(fileHash)
+                return
+            }
+        } catch (t: Throwable) {
+            Timber.w(t, "RetroAchievements: Failed to hash via temp file")
+        }
+
+        if (tempRomFile.length() <= MAX_BUFFER_HASH_BYTES) {
+            try {
+                val romBytes = tempRomFile.readBytes()
+                val bufferHash = com.swordfish.libretrodroid.LibretroDroid.generateRetroAchievementsHash(
+                    consoleId,
+                    "",
+                    romBytes
+                )
+                if (!bufferHash.isNullOrEmpty()) {
+                    result.add(bufferHash)
+                }
+            } catch (t: Throwable) {
+                Timber.w(t, "RetroAchievements: Failed to hash via buffer")
+            }
+        }
     }
 
     private fun getCacheFile(gameId: Int): File {

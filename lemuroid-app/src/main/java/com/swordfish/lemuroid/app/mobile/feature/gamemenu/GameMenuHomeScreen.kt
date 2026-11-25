@@ -34,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -59,7 +60,10 @@ import com.swordfish.lemuroid.app.utils.android.settings.LemuroidSettingsSwitch
 import com.swordfish.lemuroid.lib.cheats.CheatSupport
 import com.swordfish.lemuroid.lib.patch.PatchManager
 import com.swordfish.lemuroid.lib.patch.PatchSource
+import com.swordfish.lemuroid.lib.patch.RomPatch
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.reflect.KFunction1
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -73,12 +77,17 @@ fun GameMenuHomeScreen(
     var showSpeedDialog by remember { mutableStateOf(false) }
     var currentSpeed by remember { mutableIntStateOf(gameMenuRequest.fastForwardSpeed) }
 
-    val availablePatches = remember(gameMenuRequest.game.id) {
-        PatchManager.discoverPatches(context, gameMenuRequest.game)
+    val availablePatches by produceState<List<RomPatch>>(
+        initialValue = emptyList(),
+        key1 = gameMenuRequest.game.id,
+    ) {
+        value = withContext(Dispatchers.IO) {
+            PatchManager.discoverPatches(context, gameMenuRequest.game)
+        }
     }
     var showPatchesDialog by remember { mutableStateOf(false) }
     val initialPatchIds = remember(gameMenuRequest.game.id) {
-        PatchManager.getEnabledPatchIds(context, gameMenuRequest.game.id, availablePatches)
+        PatchManager.getEnabledPatchIds(context, gameMenuRequest.game.id)
     }
     var enabledPatchIds by remember(gameMenuRequest.game.id) {
         mutableStateOf(initialPatchIds)

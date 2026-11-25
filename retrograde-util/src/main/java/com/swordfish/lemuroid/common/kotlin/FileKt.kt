@@ -24,6 +24,7 @@ import androidx.documentfile.provider.DocumentFile
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.InputStream
 import java.io.PushbackInputStream
 import java.security.MessageDigest
@@ -49,8 +50,13 @@ fun InputStream.calculateCrc32(): String =
 
 private val NON_ROM_ZIP_EXTENSIONS =
     setOf(
-        "txt", "nfo", "md", "diz", "jpg", "jpeg", "png", "bmp", "gif", "xml", "pdf", "html", "htm",
+        "txt", "nfo", "diz", "jpg", "jpeg", "png", "bmp", "gif", "xml", "pdf", "html", "htm",
         "ips", "ups", "bps", "xdelta", "cht", "sav", "srm", "state", "url", "cue"
+    )
+
+private val NON_ROM_DOC_FILENAMES =
+    setOf(
+        "readme.md", "changelog.md", "license.md", "credits.md", "notes.md"
     )
 
 fun InputStream.calculateRomCrc32(
@@ -73,33 +79,38 @@ fun InputStream.calculateRomCrc32(
             var entry = zipStream.nextEntry
             while (entry != null) {
                 val entryName = entry.name
-                val ext = entryName.substringAfterLast('.', "").lowercase()
-                val isIgnored =
+                val entryFileName = entryName.substringAfterLast('/')
+                val isMacOsMeta =
                     entry.isDirectory ||
                         entryName.startsWith("__MACOSX/", ignoreCase = true) ||
                         entryName.contains("/__MACOSX/", ignoreCase = true) ||
-                        ext in NON_ROM_ZIP_EXTENSIONS
+                        entryFileName.startsWith("._")
 
-                if (!isIgnored) {
+                if (!isMacOsMeta) {
                     val matchesTarget = targetEntryName != null &&
-                        (entryName == targetEntryName || entryName.substringAfterLast('/') == targetEntryName)
+                        (entryName == targetEntryName || entryFileName == targetEntryName)
+                    val ext = entryFileName.substringAfterLast('.', "").lowercase()
+                    val isNonRom = !matchesTarget &&
+                        (ext in NON_ROM_ZIP_EXTENSIONS || entryFileName.lowercase() in NON_ROM_DOC_FILENAMES)
 
-                    val crc = CRC32()
-                    var entryBytes = 0L
-                    var read = zipStream.read(buffer)
-                    while (read != -1) {
-                        crc.update(buffer, 0, read)
-                        entryBytes += read
-                        read = zipStream.read(buffer)
-                    }
+                    if (!isNonRom) {
+                        val crc = CRC32()
+                        var entryBytes = 0L
+                        var read = zipStream.read(buffer)
+                        while (read != -1) {
+                            crc.update(buffer, 0, read)
+                            entryBytes += read
+                            read = zipStream.read(buffer)
+                        }
 
-                    if (matchesTarget) {
-                        return@use crc.value.toStringCRC32().uppercase()
-                    }
+                        if (matchesTarget) {
+                            return@use crc.value.toStringCRC32().uppercase()
+                        }
 
-                    if (entryBytes > bestSize) {
-                        bestSize = entryBytes
-                        bestCrc = crc.value.toStringCRC32().uppercase()
+                        if (entryBytes > bestSize) {
+                            bestSize = entryBytes
+                            bestCrc = crc.value.toStringCRC32().uppercase()
+                        }
                     }
                 }
                 zipStream.closeEntry()
@@ -126,6 +137,13 @@ fun InputStream.writeToFile(file: File) {
     }
 }
 
+private val ZIP_MIME_TYPES =
+    setOf(
+        "application/zip",
+        "application/x-zip-compressed",
+        "application/x-zip",
+    )
+
 fun ZipInputStream.extractEntryToFile(
     entryName: String,
     gameFile: File,
@@ -133,15 +151,24 @@ fun ZipInputStream.extractEntryToFile(
     this.use { inputStream ->
         while (true) {
             val entry = inputStream.nextEntry
+                ?: throw FileNotFoundException("Entry '$entryName' not found in zip archive")
             if (entry.name == entryName) break
         }
-        inputStream.writeToFile(gameFile)
+        gameFile.parentFile?.mkdirs()
+        try {
+            inputStream.writeToFile(gameFile)
+        } catch (t: Throwable) {
+            gameFile.delete()
+            throw t
+        }
     }
 }
 
-fun File.isZipped() = extension == "zip"
+fun File.isZipped() = extension.equals("zip", ignoreCase = true)
 
-fun DocumentFile.isZipped() = type == "application/zip"
+fun DocumentFile.isZipped() =
+    type?.lowercase() in ZIP_MIME_TYPES ||
+        name?.endsWith(".zip", ignoreCase = true) == true
 
 private fun InputStream.uncompressedInputStream(): InputStream {
     val pb = PushbackInputStream(this, 2)
