@@ -83,4 +83,6 @@
     <string translatable="false" name="pref_key_scraper_priority">pref_key_scraper_priority</string>
     <string translatable="false" name="pref_key_fast_forward_speed">pref_key_fast_forward_speed</string>
     <string translatable="false" name="pref_key_recent_searches">pref_key_recent_searches</string>
+    <string translatable="false" name="pref_key_hud_editor_show_grid">hud_editor_show_grid</string>
+    <string translatable="false" name="pref_key_hud_editor_snap_to_grid">hud_editor_snap_to_grid</string>
 </resources>

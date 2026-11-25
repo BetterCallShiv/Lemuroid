@@ -24,7 +24,9 @@ import com.swordfish.touchinput.radial.controls.LemuroidControlFaceButtons
 import com.swordfish.touchinput.radial.layouts.shared.ComposeTouchLayouts
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenu
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonStart
+import com.swordfish.touchinput.radial.settings.HudControlIds
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.settings.trackHudBounds
 import com.swordfish.touchinput.radial.ui.LemuroidButtonForeground
 import gg.padkit.PadKitScope
 import gg.padkit.ids.Id
@@ -42,12 +44,12 @@ fun PadKitScope.LynxLeft(
         primaryDial = { LemuroidControlCross(id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_DPAD)) },
         secondaryDials = {
             LemuroidControlButton(
-                modifier = Modifier.radialPosition(120f),
+                modifier = Modifier.radialPosition(120f).trackHudBounds(HudControlIds.BTN_L1),
                 id = Id.Key(KeyEvent.KEYCODE_BUTTON_L1),
                 label = "OPTION 1",
             )
             LemuroidControlButton(
-                modifier = Modifier.radialPosition(-120f),
+                modifier = Modifier.radialPosition(-120f).trackHudBounds(HudControlIds.BTN_R1),
                 id = Id.Key(KeyEvent.KEYCODE_BUTTON_R1),
                 label = "OPTION 2",
             )
@@ -163,7 +165,7 @@ fun PadKitScope.LynxCenter(
             contentAlignment = Alignment.Center,
         ) {
             LemuroidControlButton(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().trackHudBounds(HudControlIds.BTN_FAST_FORWARD),
                 id = Id.Key(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD),
                 icon = R.drawable.button_fast_forward,
                 active = LocalFastForwardEnabled.current,

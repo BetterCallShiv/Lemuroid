@@ -13,7 +13,9 @@ import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenu
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenuPlaceholder
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonSelect
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonStart
+import com.swordfish.touchinput.radial.settings.HudControlIds
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.settings.trackHudBounds
 import com.swordfish.touchinput.radial.ui.LemuroidCentralButton
 import com.swordfish.touchinput.radial.utils.buildCentral6ButtonsAnchors
 import gg.padkit.PadKitScope
@@ -66,12 +68,12 @@ fun PadKitScope.Genesis6Right(
         },
         secondaryDials = {
             LemuroidControlButton(
-                modifier = Modifier.radialPosition(60f),
+                modifier = Modifier.radialPosition(60f).trackHudBounds(HudControlIds.BTN_EXTRA_C),
                 id = Id.Key(KeyEvent.KEYCODE_BUTTON_A),
                 label = "C",
             )
             LemuroidControlButton(
-                modifier = Modifier.radialPosition(90f),
+                modifier = Modifier.radialPosition(90f).trackHudBounds(HudControlIds.BTN_R1),
                 id = Id.Key(KeyEvent.KEYCODE_BUTTON_R1),
                 label = "Z",
             )

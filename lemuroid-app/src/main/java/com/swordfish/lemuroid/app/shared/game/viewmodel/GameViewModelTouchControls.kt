@@ -48,6 +48,7 @@ class GameViewModelTouchControls(
     private val screenOrientation = MutableStateFlow(TouchControllerSettingsManager.Orientation.PORTRAIT)
     private val menuPressed = MutableStateFlow(false)
     private val showEditControls = MutableStateFlow(false)
+    private val showAdvancedHudEditor = MutableStateFlow(false)
     private val hapticFeedbackMode = MutableStateFlow(HapticFeedbackMode.NONE)
 
     private var loadingMenuJob: Job? = null
@@ -83,20 +84,26 @@ class GameViewModelTouchControls(
     }
 
     fun updateTouchControllerSettings(touchControllerSettings: TouchControllerSettingsManager.Settings) {
+        val controller = touchControlId.value
+        val orientation = screenOrientation.value
+        touchControllerSettingsManager.updateCachedSettings(controller, orientation, touchControllerSettings)
         scope.launch {
             touchControllerSettingsManager.storeSettings(
-                touchControlId.value,
-                screenOrientation.value,
+                controller,
+                orientation,
                 touchControllerSettings,
             )
         }
     }
 
     fun resetTouchControls() {
+        val controller = touchControlId.value
+        val orientation = screenOrientation.value
+        touchControllerSettingsManager.updateCachedSettings(controller, orientation, null)
         scope.launch {
             touchControllerSettingsManager.resetSettings(
-                touchControlId.value,
-                screenOrientation.value,
+                controller,
+                orientation,
             )
         }
     }
@@ -193,6 +200,17 @@ class GameViewModelTouchControls(
 
     fun showEditControls(show: Boolean) {
         showEditControls.value = show
+    }
+
+    fun isAdvancedHudEditorShown(): Flow<Boolean> {
+        return showAdvancedHudEditor
+    }
+
+    fun showAdvancedHudEditor(show: Boolean) {
+        if (show) {
+            showEditControls.value = false
+        }
+        showAdvancedHudEditor.value = show
     }
 
     private fun handleVirtualInputButton(event: InputEvent.Button) {

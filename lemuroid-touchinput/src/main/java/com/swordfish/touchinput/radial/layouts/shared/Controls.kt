@@ -8,7 +8,9 @@ import com.swordfish.touchinput.controller.R
 import com.swordfish.touchinput.radial.LocalFastForwardEnabled
 import com.swordfish.touchinput.radial.controls.LemuroidControlAnalog
 import com.swordfish.touchinput.radial.controls.LemuroidControlButton
+import com.swordfish.touchinput.radial.settings.HudControlIds
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.settings.trackHudBounds
 import gg.padkit.PadKitScope
 import gg.padkit.ids.Id
 import gg.padkit.layouts.radial.secondarydials.LayoutRadialSecondaryDialsScope
@@ -17,7 +19,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonSelect(position: Int = 0) {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(120f - 30f * position),
+        modifier = Modifier.radialPosition(120f - 30f * position).trackHudBounds(HudControlIds.BTN_SELECT),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_SELECT),
         icon = R.drawable.button_select,
     )
@@ -27,7 +29,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonL1() {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(90f),
+        modifier = Modifier.radialPosition(90f).trackHudBounds(HudControlIds.BTN_L1),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_L1),
         label = "L1",
     )
@@ -37,7 +39,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonL2() {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(120f),
+        modifier = Modifier.radialPosition(120f).trackHudBounds(HudControlIds.BTN_L2),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_L2),
         label = "L2",
     )
@@ -47,7 +49,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonR1() {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(90f),
+        modifier = Modifier.radialPosition(90f).trackHudBounds(HudControlIds.BTN_R1),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_R1),
         label = "R1",
     )
@@ -57,7 +59,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonR2() {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(60f),
+        modifier = Modifier.radialPosition(60f).trackHudBounds(HudControlIds.BTN_R2),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_R2),
         label = "R2",
     )
@@ -67,7 +69,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonL() {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(120f),
+        modifier = Modifier.radialPosition(120f).trackHudBounds(HudControlIds.BTN_L),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_L1),
         label = "L",
     )
@@ -77,7 +79,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonR() {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(60f),
+        modifier = Modifier.radialPosition(60f).trackHudBounds(HudControlIds.BTN_R),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_R1),
         label = "R",
     )
@@ -87,7 +89,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonStart(position: Int = 0) {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(60f + 30f * position),
+        modifier = Modifier.radialPosition(60f + 30f * position).trackHudBounds(HudControlIds.BTN_START),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_START),
         icon = R.drawable.button_start,
     )
@@ -97,7 +99,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonMenu(settings: TouchControllerSettingsManager.Settings) {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(-60f + 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION),
+        modifier = Modifier.radialPosition(-60f + 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION).trackHudBounds(HudControlIds.BTN_MENU),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_MODE),
         icon = R.drawable.button_menu,
     )
@@ -108,7 +110,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 fun SecondaryButtonFastForward(settings: TouchControllerSettingsManager.Settings) {
     val isFfEnabled = LocalFastForwardEnabled.current
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(-120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION),
+        modifier = Modifier.radialPosition(-120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION).trackHudBounds(HudControlIds.BTN_FAST_FORWARD),
         id = Id.Key(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD),
         icon = R.drawable.button_fast_forward,
         active = isFfEnabled,
@@ -120,7 +122,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 fun SecondaryButtonFastForwardRight(settings: TouchControllerSettingsManager.Settings) {
     val isFfEnabled = LocalFastForwardEnabled.current
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(-120f + 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION),
+        modifier = Modifier.radialPosition(-120f + 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION).trackHudBounds(HudControlIds.BTN_FAST_FORWARD),
         id = Id.Key(KeyEvent.KEYCODE_MEDIA_FAST_FORWARD),
         icon = R.drawable.button_fast_forward,
         active = isFfEnabled,
@@ -140,7 +142,8 @@ fun SecondaryAnalogLeft() {
         modifier =
             Modifier
                 .radialPosition(-80f)
-                .radialScale(2.0f),
+                .radialScale(2.0f)
+                .trackHudBounds(HudControlIds.LEFT_ANALOG),
         id = Id.ContinuousDirection(ComposeTouchLayouts.MOTION_SOURCE_LEFT_STICK),
         analogPressId = Id.Key(KeyEvent.KEYCODE_BUTTON_THUMBL),
     )
@@ -153,7 +156,8 @@ fun SecondaryAnalogRight() {
         modifier =
             Modifier
                 .radialPosition(+80f - 180f)
-                .radialScale(2.0f),
+                .radialScale(2.0f)
+                .trackHudBounds(HudControlIds.RIGHT_ANALOG),
         id = Id.ContinuousDirection(ComposeTouchLayouts.MOTION_SOURCE_RIGHT_STICK),
         analogPressId = Id.Key(KeyEvent.KEYCODE_BUTTON_THUMBR),
     )
@@ -163,7 +167,7 @@ context(PadKitScope, LayoutRadialSecondaryDialsScope)
 @Composable
 fun SecondaryButtonCoin() {
     LemuroidControlButton(
-        modifier = Modifier.radialPosition(120f),
+        modifier = Modifier.radialPosition(120f).trackHudBounds(HudControlIds.BTN_SELECT),
         id = Id.Key(KeyEvent.KEYCODE_BUTTON_SELECT),
         icon = R.drawable.button_coin,
     )

@@ -14,7 +14,9 @@ import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenu
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonMenuPlaceholder
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonR
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonStart
+import com.swordfish.touchinput.radial.settings.HudControlIds
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.settings.trackHudBounds
 import com.swordfish.touchinput.radial.ui.LemuroidButtonForeground
 import com.swordfish.touchinput.radial.ui.LemuroidCrossForegroundAlternate
 import gg.padkit.PadKitScope
@@ -35,7 +37,7 @@ fun PadKitScope.N64Left(
             SecondaryAnalogLeft()
             SecondaryButtonL()
             LemuroidControlButton(
-                modifier = Modifier.radialPosition(60f),
+                modifier = Modifier.radialPosition(60f).trackHudBounds(HudControlIds.BTN_L2),
                 id = Id.Key(KeyEvent.KEYCODE_BUTTON_L2),
                 label = "Z",
             )
@@ -76,7 +78,8 @@ fun PadKitScope.N64Right(
                 modifier =
                     Modifier
                         .radialPosition(+80f - 180f)
-                        .radialScale(2.0f),
+                        .radialScale(2.0f)
+                        .trackHudBounds(HudControlIds.RIGHT_C_PAD),
                 id = Id.DiscreteDirection(ComposeTouchLayouts.MOTION_SOURCE_RIGHT_STICK),
                 allowDiagonals = false,
                 foreground = { LemuroidCrossForegroundAlternate(it) },

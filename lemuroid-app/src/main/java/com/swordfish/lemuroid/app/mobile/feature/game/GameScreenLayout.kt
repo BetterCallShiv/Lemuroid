@@ -3,6 +3,7 @@ package com.swordfish.lemuroid.app.mobile.feature.game
 import androidx.constraintlayout.compose.ChainStyle
 import androidx.constraintlayout.compose.ConstraintSet
 import androidx.constraintlayout.compose.Dimension
+import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
 
 object GameScreenLayout {
     const val CONSTRAINTS_BOTTOM_CONTAINER = "bottomContainer"
@@ -17,11 +18,50 @@ object GameScreenLayout {
     fun buildConstraintSet(
         isLandscape: Boolean,
         allowTouchOverlay: Boolean,
+        customViewport: TouchControllerSettingsManager.HudViewportRect? = null,
     ): ConstraintSet {
+        if (customViewport != null) {
+            return buildConstraintSetCustom(customViewport)
+        }
         return when {
             !isLandscape -> buildConstraintSetPortrait()
             allowTouchOverlay -> buildConstraintSetLandscape()
             else -> buildConstraintSetLandscapeNoOverlay()
+        }
+    }
+
+    private fun buildConstraintSetCustom(
+        viewport: TouchControllerSettingsManager.HudViewportRect,
+    ): ConstraintSet {
+        val left = viewport.xFraction.coerceIn(0f, 1f - TouchControllerSettingsManager.MIN_VIEWPORT_WIDTH)
+        val top = viewport.yFraction.coerceIn(0f, 1f - TouchControllerSettingsManager.MIN_VIEWPORT_HEIGHT)
+        val right = (left + viewport.widthFraction).coerceIn(left + TouchControllerSettingsManager.MIN_VIEWPORT_WIDTH, 1f)
+        val bottom = (top + viewport.heightFraction).coerceIn(top + TouchControllerSettingsManager.MIN_VIEWPORT_HEIGHT, 1f)
+
+        return ConstraintSet {
+            val gameView = createRefFor(CONSTRAINTS_GAME_VIEW)
+            val gameContainer = createRefFor(CONSTRAINTS_GAME_CONTAINER)
+
+            val leftGuideline = createGuidelineFromAbsoluteLeft(left)
+            val rightGuideline = createGuidelineFromAbsoluteLeft(right)
+            val topGuideline = createGuidelineFromTop(top)
+            val bottomGuideline = createGuidelineFromTop(bottom)
+
+            constrain(gameView) {
+                width = Dimension.fillToConstraints
+                height = Dimension.fillToConstraints
+                absoluteLeft.linkTo(leftGuideline)
+                absoluteRight.linkTo(rightGuideline)
+                this.top.linkTo(topGuideline)
+                this.bottom.linkTo(bottomGuideline)
+            }
+
+            constrain(gameContainer) {
+                absoluteLeft.linkTo(gameView.absoluteLeft)
+                absoluteRight.linkTo(gameView.absoluteRight)
+                this.top.linkTo(gameView.top)
+                this.bottom.linkTo(gameView.bottom)
+            }
         }
     }
 

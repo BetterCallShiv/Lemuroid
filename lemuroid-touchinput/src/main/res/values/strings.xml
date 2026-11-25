@@ -2,5 +2,23 @@
 <resources>
     <string name="touch_customize_button_done">Done</string>
     <string name="touch_customize_button_reset">Reset</string>
+    <string name="touch_customize_button_advanced_hud">Advanced HUD Editor</string>
     <string name="touch_customize_info">Drag and Pinch controls to change position and size</string>
+    <string name="touch_hud_editor_game_screen">Game Screen</string>
+    <string name="touch_hud_editor_hint">Tap a control or game screen to select &amp; drag</string>
+    <string name="touch_hud_editor_size">Size</string>
+    <string name="touch_hud_editor_width">Width</string>
+    <string name="touch_hud_editor_height">Height</string>
+    <string name="touch_hud_editor_show_hidden">Show hidden items in editor</string>
+    <string name="touch_hud_editor_grid_toggle">Toggle grid</string>
+    <string name="touch_hud_editor_snap_mode">Snap</string>
+    <string name="touch_hud_editor_free_mode">Free</string>
+    <string name="touch_hud_editor_dock_toggle">Move toolbar</string>
+    <string name="touch_hud_editor_custom_active_note">Custom HUD active, edit it in Advanced HUD Editor or Reset</string>
+    <string name="touch_hud_editor_reset_item">Reset Item</string>
+    <string name="touch_hud_editor_reset_all">Reset All</string>
+    <string name="touch_hud_editor_reset_confirm_title">Reset HUD Layout?</string>
+    <string name="touch_hud_editor_reset_confirm_message">This will restore all buttons and game screen position for this console and orientation back to default.</string>
+    <string name="touch_hud_editor_save">Save</string>
+    <string name="touch_hud_editor_cancel">Cancel</string>
 </resources>

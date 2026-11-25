@@ -24,12 +24,36 @@ class TouchControllerSettingsManager(private val sharedPreferences: SharedPrefer
     }
 
     @Serializable
+    data class HudControlOverride(
+        val xFraction: Float,
+        val yFraction: Float,
+        val scale: Float = 1.0f,
+        val visible: Boolean = true,
+    )
+
+    @Serializable
+    data class HudViewportRect(
+        val xFraction: Float,
+        val yFraction: Float,
+        val widthFraction: Float,
+        val heightFraction: Float,
+    )
+
+    @Serializable
     data class Settings(
         val scale: Float = DEFAULT_SCALE,
         val rotation: Float = DEFAULT_ROTATION,
         val marginX: Float = DEFAULT_MARGIN_X,
         val marginY: Float = DEFAULT_MARGIN_Y,
+        val customHudEnabled: Boolean = false,
+        val customViewport: HudViewportRect? = null,
+        val controlOverrides: Map<String, HudControlOverride> = emptyMap(),
     )
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
 
     private fun computeInsetsPaddings(
         density: Density,
@@ -72,11 +96,25 @@ class TouchControllerSettingsManager(private val sharedPreferences: SharedPrefer
             cachedSettings.getOrPut(settingsKey) {
                 val currentSettings =
                     sharedPreferences.getString(settingsKey, null)
-                        ?.let { Json.decodeFromString(Settings.serializer(), it) }
+                        ?.let { raw ->
+                            runCatching { json.decodeFromString(Settings.serializer(), raw) }
+                                .onFailure { Timber.w(it, "Failed to decode touch controller settings for $settingsKey") }
+                                .getOrNull()
+                        }
 
                 MutableStateFlow(currentSettings)
             }
         return cachedStateFlow.map { it ?: defaultSettings }
+    }
+
+    fun updateCachedSettings(
+        touchControllerID: TouchControllerID,
+        orientation: Orientation,
+        settings: Settings?,
+    ) {
+        val cacheKey = getPreferenceString(touchControllerID, orientation)
+        val cacheFlow = cachedSettings.getOrPut(cacheKey) { MutableStateFlow(settings) }
+        cacheFlow.value = settings
     }
 
     suspend fun storeSettings(
@@ -90,20 +128,10 @@ class TouchControllerSettingsManager(private val sharedPreferences: SharedPrefer
             sharedPreferences.edit {
                 putString(
                     getPreferenceString(touchControllerID, orientation),
-                    Json.encodeToString(Settings.serializer(), settings),
+                    json.encodeToString(Settings.serializer(), settings),
                 )
             }
         }
-    }
-
-    private fun updateCachedSettings(
-        touchControllerID: TouchControllerID,
-        orientation: Orientation,
-        settings: Settings?,
-    ) {
-        val cacheKey = getPreferenceString(touchControllerID, orientation)
-        val cacheFlow = cachedSettings.getOrPut(cacheKey) { MutableStateFlow(settings) }
-        cacheFlow.value = settings
     }
 
     suspend fun resetSettings(
@@ -127,6 +155,12 @@ class TouchControllerSettingsManager(private val sharedPreferences: SharedPrefer
         const val MAX_ROTATION = 45f
         const val MIN_SCALE = 0.75f
         const val MAX_SCALE = 1.5f
+
+        const val MIN_CUSTOM_CONTROL_SCALE = 0.5f
+        const val MAX_CUSTOM_CONTROL_SCALE = 2.2f
+
+        const val MIN_VIEWPORT_WIDTH = 0.25f
+        const val MIN_VIEWPORT_HEIGHT = 0.20f
 
         const val MAX_MARGINS = 96f
     }

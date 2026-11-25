@@ -5,7 +5,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9%2B-purple.svg)](https://kotlinlang.org)
 [![RetroAchievements](https://img.shields.io/badge/RetroAchievements-Supported-gold.svg)](https://retroachievements.org)
 
-**AlphaLemuroid** is an enhanced feature-rich fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) adding missing features like RetroAchievements Support, Game Artwork & Media scraping, Multi-Folder ROM storage, Built-in Cheats, IPS Patching, Full Backup & Restore, Unlimited Save States and a Modernized UI.
+**AlphaLemuroid** is an enhanced feature-rich fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) adding missing features like RetroAchievements Support, an Advanced HUD Editor, Game Artwork & Media scraping, Multi-Folder ROM storage, Built-in Cheats, IPS Patching, Full Backup & Restore, Unlimited Save States and a Modernized UI.
 
 ---
 
@@ -30,6 +30,10 @@
 | <img src="docs/screenshots/backup_create.jpg" width="270" alt="Create Backup Dialog"/> | <img src="docs/screenshots/backup_progress.jpg" width="270" alt="Backup Progress"/> | <img src="docs/screenshots/restore_success.jpg" width="270" alt="Restore Summary"/> |
 |:---:|:---:|:---:|
 | **Selective Backup Creation** | **Live Backup Progress** | **Restore Summary** |
+
+| <img src="docs/screenshots/hud_editor_lynx.jpg" width="270" alt="Advanced HUD Editor Controls"/> | <img src="docs/screenshots/hud_editor_grid.jpg" width="270" alt="HUD Editor Symmetry Grid"/> | <img src="docs/screenshots/hud_custom_n64.jpg" width="270" alt="Custom N64 HUD Layout"/> |
+|:---:|:---:|:---:|
+| **Advanced HUD Editor** | **Symmetry Grid & Snap Mode** | **Custom Saved HUD In-Game** |
 
 ---
 
@@ -129,11 +133,20 @@
     * **Cheats (`.cht`):** Discovered, imported and custom cheat codes.
     * **Custom Collections:** User-created collections and playlist entries.
     * **Game Database & Metadata:** Cache of scraped titles, genres, ratings, developer info and play statistics.
-    * **Application Settings:** Core configurations, touch controller layouts and preferences.
+    * **Application Settings:** Core configurations, touch controller and custom HUD layouts, and app preferences.
 
 ---
 
-### ⚡ 7. Cheats, IPS Patching, Save States & Gameplay Tweaks
+### 🎛️ 7. Advanced HUD & Touch Controls Editor
+
+* **Move, Resize & Hide Buttons:** Drag individual buttons and sticks anywhere on screen, resize them (`0.5x`–`2.2x`) or hide ones you don't need.
+* **Movable & Resizable Game Screen:** Move the game screen anywhere you want and resize it by dragging the corner or using the Width/Height sliders.
+* **Alignment Grid & Snap / Free Move:** Turn on the grid to line controls up evenly across the center line and toggle between Snap and Free move right from the toolbar.
+* **Easy Reset & Backups:** Reset a single control or the whole layout anytime with full Backup & Restore support.
+
+---
+
+### ⚡ 8. Cheats, IPS Patching, Save States & Gameplay Tweaks
 
 * **In-Game HUD Fast-Forward Button:**
   * Dedicated on-screen HUD button (`⏩`) for instant fast-forward toggling.

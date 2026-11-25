@@ -277,6 +277,14 @@ class BaseGameScreenViewModel(
         return touchControls.isEditControlsShown()
     }
 
+    fun showAdvancedHudEditor(show: Boolean) {
+        touchControls.showAdvancedHudEditor(show)
+    }
+
+    fun isAdvancedHudEditorShown(): Flow<Boolean> {
+        return touchControls.isAdvancedHudEditorShown()
+    }
+
     fun updateTouchControllerSettings(touchControllerSettings: TouchControllerSettingsManager.Settings) {
         touchControls.updateTouchControllerSettings(touchControllerSettings)
     }

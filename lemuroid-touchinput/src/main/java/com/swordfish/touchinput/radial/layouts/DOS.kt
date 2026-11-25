@@ -19,7 +19,9 @@ import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonR1
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonR2
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonSelect
 import com.swordfish.touchinput.radial.layouts.shared.SecondaryButtonStart
+import com.swordfish.touchinput.radial.settings.HudControlIds
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.settings.trackHudBounds
 import com.swordfish.touchinput.radial.ui.LemuroidButtonForeground
 import gg.padkit.PadKitScope
 import gg.padkit.ids.Id
@@ -42,9 +44,11 @@ fun PadKitScope.DOSLeft(
             SecondaryAnalogLeft()
             LemuroidControlButton(
                 modifier =
-                    Modifier.radialPosition(
-                        -120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION,
-                    ),
+                    Modifier
+                        .radialPosition(
+                            -120f - 2f * settings.rotation * TouchControllerSettingsManager.MAX_ROTATION,
+                        )
+                        .trackHudBounds(HudControlIds.BTN_KEYBOARD),
                 id = Id.Key(KeyEvent.KEYCODE_BUTTON_THUMBL),
                 icon = R.drawable.button_keyboard,
             )

@@ -1,14 +1,18 @@
 package com.swordfish.touchinput.radial.layouts
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
 import com.swordfish.touchinput.radial.LocalLemuroidPadTheme
+import com.swordfish.touchinput.radial.settings.HudControlIds
 import com.swordfish.touchinput.radial.settings.TouchControllerSettingsManager
+import com.swordfish.touchinput.radial.settings.trackHudBounds
 import gg.padkit.PadKitScope
 import gg.padkit.layouts.radial.LayoutRadial
 import gg.padkit.layouts.radial.secondarydials.LayoutRadialSecondaryDialsScope
@@ -38,7 +42,14 @@ fun BaseLayoutLeft(
                     bottom = TouchControllerSettingsManager.MAX_MARGINS.dp * settings.marginY,
                 )
                 .padding(LocalLemuroidPadTheme.current.padding),
-        primaryDial = primaryDial,
+        primaryDial = {
+            Box(
+                modifier = Modifier.trackHudBounds(HudControlIds.LEFT_DPAD),
+                contentAlignment = Alignment.Center,
+            ) {
+                primaryDial()
+            }
+        },
         secondaryDials = secondaryDials,
         primaryDialMaxSize = 160.dp * interpolatedDialSize,
         secondaryDialsBaseRotationInDegrees = settings.rotation * TouchControllerSettingsManager.MAX_ROTATION,
@@ -61,7 +72,14 @@ fun BaseLayoutRight(
                     bottom = TouchControllerSettingsManager.MAX_MARGINS.dp * settings.marginY,
                 )
                 .padding(LocalLemuroidPadTheme.current.padding),
-        primaryDial = primaryDial,
+        primaryDial = {
+            Box(
+                modifier = Modifier.trackHudBounds(HudControlIds.RIGHT_FACE),
+                contentAlignment = Alignment.Center,
+            ) {
+                primaryDial()
+            }
+        },
         secondaryDials = secondaryDials,
         primaryDialMaxSize =
             160.dp *
