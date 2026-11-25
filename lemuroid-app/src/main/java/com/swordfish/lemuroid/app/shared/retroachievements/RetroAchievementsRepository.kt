@@ -28,6 +28,10 @@ data class AchievementDetail(
     val isUnlocked: Boolean,
     val unlockDate: String? = null,
     val isHardcore: Boolean = false,
+    val type: String? = null,
+    val author: String? = null,
+    val rarity: Double? = null,
+    val rarityHardcore: Double? = null,
 )
 
 data class GameAchievementsData(
@@ -357,6 +361,15 @@ class RetroAchievementsRepository(private val context: Context) {
             }
         }
 
+        val type = item.optString("Type", "").takeIf { it.isNotBlank() && it != "null" }
+        val author = item.optString("Author", "").takeIf { it.isNotBlank() && it != "null" }
+        val rarity = if (item.has("Rarity") && !item.isNull("Rarity")) {
+            item.optDouble("Rarity").takeIf { !it.isNaN() }
+        } else null
+        val rarityHardcore = if (item.has("RarityHardcore") && !item.isNull("RarityHardcore")) {
+            item.optDouble("RarityHardcore").takeIf { !it.isNaN() }
+        } else null
+
         return AchievementDetail(
             id = id,
             title = title,
@@ -366,6 +379,10 @@ class RetroAchievementsRepository(private val context: Context) {
             isUnlocked = isUnlocked,
             unlockDate = formattedDate,
             isHardcore = isHardcore,
+            type = type,
+            author = author,
+            rarity = rarity,
+            rarityHardcore = rarityHardcore,
         )
     }
 

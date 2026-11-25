@@ -12,11 +12,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,8 +63,8 @@ fun AchievementPopupOverlay(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .padding(top = 16.dp, start = 16.dp, end = 16.dp),
+            .windowInsetsPadding(WindowInsets.displayCutout.union(WindowInsets.statusBars))
+            .padding(top = 12.dp, start = 16.dp, end = 16.dp),
         contentAlignment = Alignment.TopCenter,
     ) {
         AnimatedVisibility(
@@ -95,17 +99,22 @@ fun AchievementPopupOverlay(modifier: Modifier = Modifier) {
                         modifier = Modifier.weight(1f, fill = false),
                         verticalArrangement = Arrangement.Center,
                     ) {
-                        Text(
-                            text = if (banner.categoryResId != 0) stringResource(id = banner.categoryResId) else banner.category,
-                            color = Color(0xFFFFD700),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            letterSpacing = 1.sp,
-                        )
+                        val categoryText = if (banner.categoryResId != 0) stringResource(id = banner.categoryResId) else banner.category
+                        val hasCategory = categoryText.isNotEmpty()
+                        if (hasCategory) {
+                            Text(
+                                text = categoryText,
+                                color = Color(0xFFFFD700),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 1.sp,
+                            )
+                        }
                         Text(
                             text = banner.title,
-                            color = Color.White,
+                            color = if (hasCategory) Color.White else Color(0xFFFFD700),
                             fontSize = 14.sp,
+                            lineHeight = 18.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -113,9 +122,10 @@ fun AchievementPopupOverlay(modifier: Modifier = Modifier) {
                         if (banner.subtitle.isNotEmpty()) {
                             Text(
                                 text = banner.subtitle,
-                                color = Color.White.copy(alpha = 0.7f),
+                                color = if (hasCategory) Color.White.copy(alpha = 0.7f) else Color.White.copy(alpha = 0.85f),
                                 fontSize = 12.sp,
-                                maxLines = 1,
+                                lineHeight = 16.sp,
+                                maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }

@@ -3,6 +3,7 @@ package com.swordfish.lemuroid.lib.storage.local
 import android.content.Context
 import com.swordfish.lemuroid.common.kotlin.calculateCrc32
 import com.swordfish.lemuroid.common.kotlin.toStringCRC32
+import com.swordfish.lemuroid.lib.library.SystemID
 import com.swordfish.lemuroid.lib.storage.BaseStorageFile
 import com.swordfish.lemuroid.lib.storage.StorageFile
 import com.swordfish.lemuroid.lib.storage.scanner.SerialScanner
@@ -11,8 +12,14 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 
 object DocumentFileParser {
-    private const val MAX_CHECKED_ENTRIES = 50
+    private const val MAX_CHECKED_ENTRIES = 5
     private const val MAX_SIZE_CRC32 = 1_000_000_000
+    private const val SINGLE_ROM_SIZE_RATIO = 0.9f
+
+    private val ARCADE_SYSTEM_FOLDERS = setOf(
+        SystemID.FBNEO.dbname.lowercase(),
+        SystemID.MAME2003PLUS.dbname.lowercase(),
+    )
 
     private val NON_ROM_EXTENSIONS = setOf(
         "ips", "ups", "bps", "xdelta", "cht", "txt", "nfo", "diz",
@@ -24,20 +31,30 @@ object DocumentFileParser {
         "gb", "gbc", "gba", "nes", "sfc", "smc", "gen", "smd", "md",
         "sms", "gg", "n64", "z64", "v64", "nds", "a26", "a78", "lnx",
         "pce", "ngp", "ngc", "ws", "wsc", "dosz", "3ds", "iso", "cso",
-        "chd", "pbp", "cue", "bin"
+        "chd", "pbp"
     )
 
     fun parseDocumentFile(
         context: Context,
         baseStorageFile: BaseStorageFile,
     ): StorageFile {
-        return if (baseStorageFile.extension == "zip") {
+        return if (baseStorageFile.extension.equals("zip", ignoreCase = true) && !isArcadeArchive(baseStorageFile)) {
             Timber.d("Detected zip file. ${baseStorageFile.name}")
             parseZipFile(context, baseStorageFile)
         } else {
             Timber.d("Detected standard file. ${baseStorageFile.name}")
             parseStandardFile(context, baseStorageFile)
         }
+    }
+
+    internal fun isArcadeArchive(baseStorageFile: BaseStorageFile): Boolean {
+        return isArcadePath(baseStorageFile.path) || isArcadePath(baseStorageFile.uri.path)
+    }
+
+    internal fun isArcadePath(path: String?): Boolean {
+        if (path.isNullOrBlank()) return false
+        val normalized = path.lowercase()
+        return ARCADE_SYSTEM_FOLDERS.any { normalized.contains(it) }
     }
 
     private fun parseZipFile(
@@ -109,27 +126,32 @@ object DocumentFileParser {
         openedInputStream: ZipInputStream,
         fileSize: Long = -1,
     ): ZipEntry? {
-        for (i in 0..MAX_CHECKED_ENTRIES) {
+        var checkedEntries = 0
+        while (checkedEntries < MAX_CHECKED_ENTRIES) {
             val entry = openedInputStream.nextEntry ?: break
-            if (!isGameEntry(entry, fileSize)) continue
-            return entry
+            if (isIgnoredEntry(entry)) continue
+            checkedEntries++
+            if (isGameEntry(entry, fileSize)) {
+                return entry
+            }
         }
         return null
+    }
+
+    private fun isIgnoredEntry(entry: ZipEntry): Boolean {
+        if (entry.isDirectory) return true
+        val name = entry.name
+        return name.startsWith("__MACOSX/", ignoreCase = true) ||
+            name.contains("/__MACOSX/", ignoreCase = true) ||
+            name.substringAfterLast('/').startsWith("._")
     }
 
     private fun isGameEntry(
         entry: ZipEntry,
         fileSize: Long,
     ): Boolean {
-        if (entry.isDirectory) return false
-        val name = entry.name
-        if (name.startsWith("__MACOSX/", ignoreCase = true) ||
-            name.contains("/__MACOSX/", ignoreCase = true) ||
-            name.substringAfterLast('/').startsWith("._")
-        ) {
-            return false
-        }
-        val ext = name.substringAfterLast('.', "").lowercase()
+        if (isIgnoredEntry(entry)) return false
+        val ext = entry.name.substringAfterLast('.', "").lowercase()
         if (ext in NON_ROM_EXTENSIONS) {
             return false
         }
@@ -137,8 +159,8 @@ object DocumentFileParser {
             return true
         }
         if (fileSize > 0 && entry.compressedSize > 0) {
-            return (entry.compressedSize.toFloat() / fileSize.toFloat()) > 0.3f
+            return (entry.compressedSize.toFloat() / fileSize.toFloat()) > SINGLE_ROM_SIZE_RATIO
         }
-        return ext.isNotBlank()
+        return false
     }
 }

@@ -541,6 +541,14 @@
     <string name="ra_game_details_header">RetroAchievements</string>
     <string name="ra_game_details_hardcore">HARDCORE</string>
     <string name="ra_game_details_softcore">SOFTCORE</string>
+    <string name="ra_type_progression">Progression</string>
+    <string name="ra_type_missable">Missable</string>
+    <string name="ra_type_win_condition">Win Condition</string>
+    <string name="ra_status_locked">Locked</string>
+    <string name="ra_rarity_format">%1$.1f%% of players</string>
+    <string name="ra_rarity_hardcore_format">%1$.1f%% of players (%2$.1f%% Hardcore)</string>
+    <string name="ra_unlocked_trophy_format">🏆 %1$s</string>
+    <string name="ra_view_on_web">View on RA</string>
     <string name="ra_game_details_progress">%1$d of %2$d Unlocked (%3$d/%4$d pts)</string>
     <string name="ra_game_details_view_all">View All (%1$d)</string>
     <string name="ra_game_details_unlocked_on">Unlocked %1$s</string>

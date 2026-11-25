@@ -280,8 +280,8 @@ object RetroAchievementsManager : RetroAchievementsListener {
                 }
             }
             val banner = AchievementBannerNotification(
-                category = "RETROACHIEVEMENTS",
-                categoryResId = R.string.ra_banner_category,
+                category = "",
+                categoryResId = 0,
                 title = title,
                 subtitle = subtitleText,
                 badgeUrl = badgeUrl,

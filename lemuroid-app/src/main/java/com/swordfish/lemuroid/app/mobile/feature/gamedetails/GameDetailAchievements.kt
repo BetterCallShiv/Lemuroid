@@ -10,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +32,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -65,6 +68,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -394,11 +398,13 @@ fun AchievementBadgeThumbnail(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AchievementDetailDialog(
     achievement: AchievementDetail,
     onDismiss: () -> Unit,
 ) {
+    val uriHandler = LocalUriHandler.current
     val finalUrl = if (achievement.isUnlocked) {
         achievement.badgeUrl
     } else {
@@ -418,7 +424,6 @@ fun AchievementDetailDialog(
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-             
                 Box(
                     modifier = Modifier
                         .size(80.dp)
@@ -447,7 +452,6 @@ fun AchievementDetailDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-    
                 Text(
                     text = achievement.title,
                     style = MaterialTheme.typography.titleLarge,
@@ -459,24 +463,84 @@ fun AchievementDetailDialog(
                         .padding(horizontal = 8.dp),
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = GoldAccent.copy(alpha = 0.18f),
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(
-                        text = stringResource(R.string.ra_game_details_points_badge, achievement.points),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = GoldAccent,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    )
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = GoldAccent.copy(alpha = 0.18f),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ra_game_details_points_badge, achievement.points),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = GoldAccent,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+
+                    val typeLabel = when (achievement.type?.lowercase()) {
+                        "progression" -> stringResource(R.string.ra_type_progression)
+                        "missable" -> stringResource(R.string.ra_type_missable)
+                        "win_condition" -> stringResource(R.string.ra_type_win_condition)
+                        else -> null
+                    }
+                    if (typeLabel != null) {
+                        val typeColor = if (achievement.type?.lowercase() == "missable") {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.tertiary
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = typeColor.copy(alpha = 0.18f),
+                        ) {
+                            Text(
+                                text = typeLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = typeColor,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
+                    }
+
+                    if (achievement.isUnlocked) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = (if (achievement.isHardcore) GoldAccent else MaterialTheme.colorScheme.secondary).copy(alpha = 0.18f),
+                        ) {
+                            Text(
+                                text = stringResource(
+                                    if (achievement.isHardcore) R.string.ra_game_details_hardcore else R.string.ra_game_details_softcore,
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (achievement.isHardcore) GoldAccent else MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.ra_status_locked),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
-
 
                 Text(
                     text = achievement.description,
@@ -488,31 +552,76 @@ fun AchievementDetailDialog(
                         .padding(horizontal = 8.dp),
                 )
 
-    
-                if (achievement.isUnlocked) {
-                    Spacer(modifier = Modifier.height(14.dp))
-                    val statusText = achievement.unlockDate?.let {
-                        stringResource(R.string.ra_game_details_unlocked_on, it)
-                    } ?: stringResource(R.string.ra_achievement_unlocked)
-                    Text(
-                        text = "🏆 $statusText",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = GoldAccent,
-                        textAlign = TextAlign.Center,
-                    )
+                val rarityText = achievement.rarity?.let { r ->
+                    val hc = achievement.rarityHardcore
+                    if (hc != null && hc > 0.0) {
+                        stringResource(R.string.ra_rarity_hardcore_format, r, hc)
+                    } else {
+                        stringResource(R.string.ra_rarity_format, r)
+                    }
+                }
+                val hasFooterMeta = achievement.isUnlocked || rarityText != null
+                if (hasFooterMeta) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (achievement.isUnlocked) {
+                            val statusText = achievement.unlockDate?.let {
+                                stringResource(R.string.ra_game_details_unlocked_on, it)
+                            } ?: stringResource(R.string.ra_achievement_unlocked)
+                            Text(
+                                text = stringResource(R.string.ra_unlocked_trophy_format, statusText),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GoldAccent,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                        if (rarityText != null) {
+                            Text(
+                                text = rarityText,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center,
+                            )
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                Button(
-                    onClick = onDismiss,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                    ),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                 ) {
-                    Text(text = stringResource(R.string.close))
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                uriHandler.openUri("https://retroachievements.org/achievement/${achievement.id}")
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.OpenInNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = stringResource(R.string.ra_view_on_web))
+                    }
+
+                    Button(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                        ),
+                    ) {
+                        Text(text = stringResource(R.string.close))
+                    }
                 }
             }
         }
