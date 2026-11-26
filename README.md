@@ -5,7 +5,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-1.9%2B-purple.svg)](https://kotlinlang.org)
 [![RetroAchievements](https://img.shields.io/badge/RetroAchievements-Supported-gold.svg)](https://retroachievements.org)
 
-**AlphaLemuroid** is an enhanced feature-rich fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) adding missing features like RetroAchievements Support, Advanced HUD Editor, Game Artwork & Media scraping, Multi-Folder ROM storage, Built-in Cheats, IPS Patching, Full Backup & Restore, Unlimited Save States, Modernized UI and much more.
+**AlphaLemuroid** is an enhanced feature-rich fork of [Lemuroid](https://github.com/Swordfish90/Lemuroid) adding extra features like RetroAchievements Tracking, Advanced Controls Editor, Game Media scraping, Cheats Support, IPS Patching, Full App Backup & Restore, Unlimited Save States, Interactive UI and much more.
 
 ---
 
