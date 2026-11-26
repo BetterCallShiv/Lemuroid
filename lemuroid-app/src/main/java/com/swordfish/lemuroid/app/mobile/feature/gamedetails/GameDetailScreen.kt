@@ -631,9 +631,7 @@ fun GameDetailScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    val displayFileName = state.actualFileName?.takeIf { it != game.fileName }
-                        ?.let { "$it (${game.fileName})" }
-                        ?: game.fileName
+                    val displayFileName = state.actualFileName ?: game.fileName
                     DetailInfoRow(
                         label = stringResource(R.string.game_details_filename),
                         value = displayFileName,
