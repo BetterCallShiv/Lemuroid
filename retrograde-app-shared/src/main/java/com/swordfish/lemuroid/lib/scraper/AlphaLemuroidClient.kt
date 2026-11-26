@@ -1,6 +1,8 @@
 package com.swordfish.lemuroid.lib.scraper
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
@@ -9,6 +11,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 class AlphaLemuroidClient(
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
@@ -29,7 +32,9 @@ class AlphaLemuroidClient(
         .build(),
 ) {
     companion object {
-        private const val API_URL = "https://api.alphalemuroid.workers.dev/scrape"
+        private const val API_URL = "https://api.alphalemuroid.indevs.in/scrape"
+        private const val MAX_RETRY_ATTEMPTS = 2
+        private val RETRYABLE_HTTP_CODES = setOf(429, 503)
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private val ROM_EXT_REGEX = Regex(
             "\\.(zip|7z|rar|nes|fds|sfc|smc|fig|swc|gb|gbc|gba|md|smd|gen|bin|cue|iso|chd|pbp|cso|n64|z64|v64|nds|3ds|cia|sms|gg|pce|ccd|ngp|ngc|ws|wsc|a26|a78|lnx|dos)$",
@@ -40,6 +45,34 @@ class AlphaLemuroidClient(
         private val BRACKET_TAG_REGEX = Regex("\\s*\\[[^]]*]")
         private val SEPARATOR_REGEX = Regex("[_\\-]+")
         private val MULTI_SPACE_REGEX = Regex("\\s+")
+    }
+
+    private suspend fun executePostWithRetry(request: Request): String? {
+        for (attempt in 0..MAX_RETRY_ATTEMPTS) {
+            var retryDelayMs: Long? = null
+            try {
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        return response.body?.string()
+                    }
+                    if (response.code !in RETRYABLE_HTTP_CODES || attempt == MAX_RETRY_ATTEMPTS) {
+                        return null
+                    }
+                    val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
+                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 5000L)
+                        ?: (500L * (attempt + 1) + Random.nextLong(50L, 250L))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                if (attempt == MAX_RETRY_ATTEMPTS) return null
+                retryDelayMs = 400L * (attempt + 1)
+            }
+            if (retryDelayMs != null) {
+                delay(retryDelayMs)
+            }
+        }
+        return null
     }
 
     data class UnifiedScrapeResult(
@@ -134,12 +167,7 @@ class AlphaLemuroidClient(
             requestBuilder.header("X-SS-Password", userPassword)
         }
 
-        val jsonString = runCatching {
-            okHttpClient.newCall(requestBuilder.build()).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                response.body?.string()
-            }
-        }.getOrNull() ?: return@withContext null
+        val jsonString = executePostWithRetry(requestBuilder.build()) ?: return@withContext null
 
         runCatching {
             val root = JSONObject(jsonString)
@@ -180,12 +208,7 @@ class AlphaLemuroidClient(
             .post(jsonBody.toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
-        val jsonString = runCatching {
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                response.body?.string()
-            }
-        }.getOrNull() ?: return@withContext null
+        val jsonString = executePostWithRetry(request) ?: return@withContext null
 
         parseResponse(jsonString)
     }
