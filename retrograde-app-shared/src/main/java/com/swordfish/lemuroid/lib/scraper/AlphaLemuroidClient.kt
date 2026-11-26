@@ -31,6 +31,15 @@ class AlphaLemuroidClient(
     companion object {
         private const val API_URL = "https://api.alphalemuroid.workers.dev/scrape"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        private val ROM_EXT_REGEX = Regex(
+            "\\.(zip|7z|rar|nes|fds|sfc|smc|fig|swc|gb|gbc|gba|md|smd|gen|bin|cue|iso|chd|pbp|cso|n64|z64|v64|nds|3ds|cia|sms|gg|pce|ccd|ngp|ngc|ws|wsc|a26|a78|lnx|dos)$",
+            RegexOption.IGNORE_CASE,
+        )
+        private val CATALOG_PREFIX_REGEX = Regex("^\\d{3,5}\\s*[-._]\\s*")
+        private val PAREN_TAG_REGEX = Regex("\\s*\\([^)]*\\)")
+        private val BRACKET_TAG_REGEX = Regex("\\s*\\[[^]]*]")
+        private val SEPARATOR_REGEX = Regex("[_\\-]+")
+        private val MULTI_SPACE_REGEX = Regex("\\s+")
     }
 
     data class UnifiedScrapeResult(
@@ -38,9 +47,40 @@ class AlphaLemuroidClient(
         val screenScraperJeu: JSONObject?,
     )
 
+    suspend fun scrapeGameUnified(
+        systemId: String,
+        canonicalTitle: String?,
+        fileName: String,
+        crc32: String?,
+        fileSizeBytes: Long?,
+        userId: String?,
+        userPassword: String?,
+        scraperMode: String,
+    ): UnifiedScrapeResult? {
+        val mode = scraperMode.uppercase()
+        val useScreenScraper = mode == "SCREENSCRAPER" || mode == "MIXED"
+        val useIgdb = mode == "IGDB" || mode == "MIXED"
+        val cleanPrimaryTitle = cleanGameTitle(canonicalTitle)
+        val cleanFallbackTitle = cleanGameTitle(fileName).ifBlank { cleanPrimaryTitle }
+
+        return scrapeUnified(
+            crc32 = crc32,
+            title = if (useIgdb) cleanPrimaryTitle.takeIf { it.isNotBlank() } else null,
+            fallbackTitle = cleanFallbackTitle.takeIf { it.isNotBlank() },
+            platformId = IgdbPlatformMapper.getPlatformId(systemId),
+            romName = if (useScreenScraper) fileName else null,
+            systemEid = if (useScreenScraper) ScreenScraperSystemMapper.getSystemEid(systemId) else null,
+            romSize = if (useScreenScraper) fileSizeBytes else null,
+            userId = if (useScreenScraper) userId else null,
+            userPassword = if (useScreenScraper) userPassword else null,
+            source = mode.lowercase(),
+        )
+    }
+
     suspend fun scrapeUnified(
         crc32: String? = null,
         title: String? = null,
+        fallbackTitle: String? = null,
         platformId: Int? = null,
         romName: String? = null,
         systemEid: Int? = null,
@@ -51,9 +91,12 @@ class AlphaLemuroidClient(
     ): UnifiedScrapeResult? = withContext(Dispatchers.IO) {
         val cleanCrc = crc32?.trim()?.uppercase()?.takeIf { it.isNotBlank() && it != "0" }
         val cleanTitle = cleanGameTitle(title)
-        val hasSsParams = systemEid != null && !romName.isNullOrBlank()
+        val cleanFallback = cleanGameTitle(fallbackTitle)
+        val hasSsParams = systemEid != null && (!romName.isNullOrBlank() || cleanFallback.isNotBlank())
 
-        if (cleanCrc == null && cleanTitle.isBlank() && !hasSsParams) return@withContext null
+        if (cleanCrc == null && cleanTitle.isBlank() && cleanFallback.isBlank() && !hasSsParams) {
+            return@withContext null
+        }
 
         val jsonBody = JSONObject().apply {
             put("source", source.lowercase())
@@ -63,11 +106,16 @@ class AlphaLemuroidClient(
             if (cleanTitle.isNotBlank()) {
                 put("title", cleanTitle)
             }
+            if (cleanFallback.isNotBlank()) {
+                put("fallbackTitle", cleanFallback)
+            }
             if (platformId != null && platformId > 0) {
                 put("platformId", platformId)
             }
             if (hasSsParams) {
-                put("romName", romName)
+                if (!romName.isNullOrBlank()) {
+                    put("romName", romName)
+                }
                 put("systemEid", systemEid)
                 if (romSize != null && romSize > 0L) {
                     put("romSize", romSize)
@@ -246,9 +294,13 @@ class AlphaLemuroidClient(
     fun cleanGameTitle(rawTitle: String?): String {
         if (rawTitle.isNullOrBlank()) return ""
         return rawTitle
-            .replace(Regex("\\s*\\([^)]*\\)"), "")
-            .replace(Regex("\\s*\\[[^]]*\\]"), "")
-            .replace(Regex("[_\\-]+"), " ")
+            .trim()
+            .replace(ROM_EXT_REGEX, "")
+            .replace(CATALOG_PREFIX_REGEX, "")
+            .replace(PAREN_TAG_REGEX, "")
+            .replace(BRACKET_TAG_REGEX, "")
+            .replace(SEPARATOR_REGEX, " ")
+            .replace(MULTI_SPACE_REGEX, " ")
             .trim()
     }
 }

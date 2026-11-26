@@ -445,15 +445,15 @@ class BatchScraperManager(
             val shouldDownloadFanart = mediaSources.contains("fanart")
 
             val unifiedResult = runCatching {
-                alphaLemuroidClient.scrapeUnified(
+                alphaLemuroidClient.scrapeGameUnified(
+                    systemId = game.systemId,
+                    canonicalTitle = canonicalTitle,
+                    fileName = game.fileName,
                     crc32 = crc,
-                    title = if (useIgdb) canonicalTitle else null,
-                    romName = if (useScreenScraper) game.fileName else null,
-                    systemEid = if (useScreenScraper) systemEid else null,
-                    romSize = if (useScreenScraper) fileSize else null,
-                    userId = if (useScreenScraper) user else null,
-                    userPassword = if (useScreenScraper) pass else null,
-                    source = scraperMode.lowercase(),
+                    fileSizeBytes = fileSize,
+                    userId = user,
+                    userPassword = pass,
+                    scraperMode = scraperMode,
                 )
             }.getOrNull()
 
