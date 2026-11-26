@@ -581,7 +581,7 @@
     <string name="backup_options_saves">Saves &amp; save states</string>
     <string name="backup_options_saves_desc">In-game saves, state slots and autosaves</string>
     <string name="backup_options_userdata">Library data &amp; cheats</string>
-    <string name="backup_options_userdata_desc">Favorites, play time, custom names and custom cheats</string>
+    <string name="backup_options_userdata_desc">Favorites, collections, custom covers, play time, custom names and custom cheats</string>
     <string name="backup_options_settings">App settings &amp; controls</string>
     <string name="backup_options_settings_desc">Core options, shaders, display and controller layouts</string>
     <string name="backup_options_credentials">Include login credentials</string>
@@ -629,6 +629,10 @@
     <string name="backup_item_game_stats_plural">• %1$d library games &amp; stats</string>
     <string name="backup_item_detail_singular">• 1 scraped game detail</string>
     <string name="backup_item_detail_plural">• %1$d scraped game details</string>
+    <string name="backup_item_collection_singular">• 1 collection</string>
+    <string name="backup_item_collection_plural">• %1$d collections</string>
+    <string name="backup_item_custom_cover_singular">• 1 custom cover</string>
+    <string name="backup_item_custom_cover_plural">• %1$d custom covers</string>
     <string name="backup_item_cheat_singular">• 1 cheat</string>
     <string name="backup_item_cheat_plural">• %1$d cheats</string>
     <string name="backup_item_media_singular">• 1 media file</string>
@@ -649,6 +653,10 @@
     <string name="backup_restore_summary_games_plural">• %1$d library games updated\n</string>
     <string name="backup_restore_summary_details_singular">• 1 scraped game detail restored\n</string>
     <string name="backup_restore_summary_details_plural">• %1$d scraped game details restored\n</string>
+    <string name="backup_restore_summary_collections_singular">• 1 collection restored\n</string>
+    <string name="backup_restore_summary_collections_plural">• %1$d collections restored\n</string>
+    <string name="backup_restore_summary_custom_covers_singular">• 1 custom cover restored\n</string>
+    <string name="backup_restore_summary_custom_covers_plural">• %1$d custom covers restored\n</string>
     <string name="backup_restore_summary_cheats_singular">• 1 cheat imported\n</string>
     <string name="backup_restore_summary_cheats_plural">• %1$d cheats imported\n</string>
     <string name="backup_restore_summary_media_singular">• 1 media file restored\n</string>

@@ -17,12 +17,24 @@ interface CollectionDao {
     @Query("SELECT * FROM collections ORDER BY createdAt ASC")
     fun getAllCollections(): Flow<List<GameCollection>>
 
+    @Query("SELECT * FROM collections ORDER BY createdAt ASC")
+    suspend fun getAllCollectionsSync(): List<GameCollection>
+
+    @Query("SELECT * FROM collection_games")
+    suspend fun getAllCollectionCrossRefsSync(): List<GameCollectionCrossRef>
+
     @Transaction
     @Query("SELECT * FROM collections ORDER BY createdAt ASC")
     fun getCollectionsWithGames(): Flow<List<CollectionWithGames>>
 
     @Query("SELECT collectionId FROM collection_games WHERE gameId = :gameId")
     fun getCollectionIdsForGame(gameId: Int): Flow<List<Int>>
+
+    @Query("SELECT collectionId FROM collection_games WHERE gameId = :gameId")
+    suspend fun getCollectionIdsForGameSync(gameId: Int): List<Int>
+
+    @Query("SELECT id FROM collections")
+    suspend fun getAllCollectionIdsSync(): List<Int>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCollection(collection: GameCollection): Long

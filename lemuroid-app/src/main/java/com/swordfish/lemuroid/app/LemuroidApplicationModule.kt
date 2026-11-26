@@ -195,12 +195,13 @@ abstract class LemuroidApplicationModule {
         @PerApp
         @JvmStatic
         fun lemuroidLibrary(
+            context: Context,
             db: RetrogradeDatabase,
             storageProviderRegistry: Lazy<StorageProviderRegistry>,
             gameMetadataProvider: Lazy<GameMetadataProvider>,
             biosManager: BiosManager,
             customCoverManager: CustomCoverManager,
-        ) = LemuroidLibrary(db, storageProviderRegistry, gameMetadataProvider, biosManager, customCoverManager)
+        ) = LemuroidLibrary(context, db, storageProviderRegistry, gameMetadataProvider, biosManager, customCoverManager)
 
         @Provides
         @PerApp

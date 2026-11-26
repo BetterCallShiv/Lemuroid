@@ -373,6 +373,14 @@ private fun ConfirmRestoreDialog(
                         append("\n")
                         append(if (stats.gameDetailsCount == 1) stringResource(R.string.backup_item_detail_singular) else stringResource(R.string.backup_item_detail_plural, stats.gameDetailsCount))
                     }
+                    if (stats.collectionCount > 0) {
+                        append("\n")
+                        append(if (stats.collectionCount == 1) stringResource(R.string.backup_item_collection_singular) else stringResource(R.string.backup_item_collection_plural, stats.collectionCount))
+                    }
+                    if (stats.customCoverCount > 0) {
+                        append("\n")
+                        append(if (stats.customCoverCount == 1) stringResource(R.string.backup_item_custom_cover_singular) else stringResource(R.string.backup_item_custom_cover_plural, stats.customCoverCount))
+                    }
                     if (stats.mediaCount > 0) {
                         append("\n")
                         append(if (stats.mediaCount == 1) stringResource(R.string.backup_item_media_singular) else stringResource(R.string.backup_item_media_plural, stats.mediaCount))
@@ -700,6 +708,14 @@ private fun BackupSuccessDialog(
                         if (stats.gameDetailsCount > 0) {
                             append("\n")
                             append(if (stats.gameDetailsCount == 1) stringResource(R.string.backup_item_detail_singular) else stringResource(R.string.backup_item_detail_plural, stats.gameDetailsCount))
+                        }
+                        if (stats.collectionCount > 0) {
+                            append("\n")
+                            append(if (stats.collectionCount == 1) stringResource(R.string.backup_item_collection_singular) else stringResource(R.string.backup_item_collection_plural, stats.collectionCount))
+                        }
+                        if (stats.customCoverCount > 0) {
+                            append("\n")
+                            append(if (stats.customCoverCount == 1) stringResource(R.string.backup_item_custom_cover_singular) else stringResource(R.string.backup_item_custom_cover_plural, stats.customCoverCount))
                         }
                         if (stats.cheatCount > 0) {
                             append("\n")

@@ -76,6 +76,72 @@ class CustomCoverManager(private val appContext: Context) {
         }
     }
 
+    fun getArchivedCoversDirectory(): File =
+        File(appContext.filesDir, "archived-covers").apply {
+            mkdirs()
+        }
+
+    fun migrateCover(oldGameId: Int, newGameId: Int): String? {
+        if (oldGameId == newGameId) {
+            return findCoverFileForGameId(oldGameId)?.let { Uri.fromFile(it).toString() }
+        }
+        val sourceFile = findCoverFileForGameId(oldGameId) ?: return null
+        return copyCoverToGame(sourceFile, newGameId)
+    }
+
+    fun archiveCover(gameId: Int, archiveKey: String): Boolean {
+        val sourceFile = findCoverFileForGameId(gameId) ?: return false
+        deleteArchivedCoversForKey(archiveKey)
+        val ext = sourceFile.extension.ifBlank { "png" }
+        val destFile = File(getArchivedCoversDirectory(), "archive_${archiveKey}.$ext")
+        return runCatching {
+            sourceFile.copyTo(destFile, overwrite = true)
+            true
+        }.onFailure {
+            Timber.e(it, "Failed to archive custom cover for game $gameId")
+        }.getOrDefault(false)
+    }
+
+    fun restoreArchivedCover(archiveKey: String, newGameId: Int): String? {
+        val prefix = "archive_${archiveKey}."
+        val sourceFile = getArchivedCoversDirectory().listFiles()
+            ?.firstOrNull { it.name.startsWith(prefix) }
+            ?: return null
+        return copyCoverToGame(sourceFile, newGameId)?.also {
+            sourceFile.delete()
+        }
+    }
+
+    fun importCoverFile(gameId: Int, sourceFile: File): String? {
+        if (!sourceFile.exists() || !sourceFile.isFile) return null
+        return copyCoverToGame(sourceFile, gameId)
+    }
+
+    fun deleteArchivedCoversForKey(archiveKey: String) {
+        val prefix = "archive_${archiveKey}."
+        getArchivedCoversDirectory().listFiles()
+            ?.filter { it.name.startsWith(prefix) }
+            ?.forEach { it.delete() }
+    }
+
+    fun findCoverFileForGameId(gameId: Int): File? {
+        val prefix = "cover_${gameId}."
+        return getCoversDirectory().listFiles()
+            ?.firstOrNull { it.name.startsWith(prefix) }
+    }
+
+    private fun copyCoverToGame(sourceFile: File, targetGameId: Int): String? {
+        deleteCoversForGameId(targetGameId)
+        val ext = sourceFile.extension.ifBlank { "png" }
+        val destFile = coverFileForGame(targetGameId, ext)
+        return runCatching {
+            sourceFile.copyTo(destFile, overwrite = true)
+            Uri.fromFile(destFile).toString()
+        }.onFailure {
+            Timber.e(it, "Failed to store custom cover for game $targetGameId")
+        }.getOrNull()
+    }
+
     /**
      * Deletes any file matching cover_<gameId>.* in the covers directory.
      * This ensures cleanup works regardless of which image format was used.

@@ -4,9 +4,13 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.os.StatFs
+import com.swordfish.lemuroid.lib.library.LibraryGameArchiveManager
+import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Cheat
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import com.swordfish.lemuroid.lib.library.db.entity.GameCollection
+import com.swordfish.lemuroid.lib.library.db.entity.GameCollectionCrossRef
 import com.swordfish.lemuroid.lib.library.db.entity.GameDetails
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.lemuroid.lib.scraper.MediaStorageManager
@@ -58,6 +62,7 @@ class BackupManager(
     private val directoriesManager: DirectoriesManager,
     private val retrogradeDatabase: RetrogradeDatabase,
     private val mediaStorageManager: MediaStorageManager = MediaStorageManager(appContext),
+    private val customCoverManager: CustomCoverManager = CustomCoverManager(appContext),
 ) {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -72,6 +77,7 @@ class BackupManager(
         var saveCount = 0
         var stateCount = 0
         var mediaCount = 0
+        var customCoverCount = 0
 
         if (options.includeSaves) {
             val savesDir = directoriesManager.getSavesDirectory()
@@ -120,13 +126,30 @@ class BackupManager(
         } else {
             0
         }
+        val collectionCount = if (options.includeUserData) {
+            runCatching { retrogradeDatabase.collectionDao().getAllCollectionsSync().size }.getOrDefault(0)
+        } else {
+            0
+        }
+        if (options.includeUserData) {
+            allGames.forEach { game ->
+                if (game.customCoverUri != null) {
+                    val coverFile = customCoverManager.findCoverFileForGameId(game.id)
+                    if (coverFile != null) {
+                        customCoverCount++
+                        uncompressedBytes += coverFile.length()
+                        estimatedCompressedBytes += (coverFile.length() * 0.98).toLong()
+                    }
+                }
+            }
+        }
         val cheatCount = if (options.includeCheats) {
             runCatching { retrogradeDatabase.cheatDao().selectAllCheats().size }.getOrDefault(0)
         } else {
             0
         }
 
-        val jsonBytes = (userDataCount * 300L) + (gameDetailsCount * 600L) + (cheatCount * 150L) + 10_000L
+        val jsonBytes = (userDataCount * 300L) + (gameDetailsCount * 600L) + (collectionCount * 250L) + (cheatCount * 150L) + 10_000L
         uncompressedBytes += jsonBytes
         estimatedCompressedBytes += (jsonBytes * 0.3).toLong()
 
@@ -144,6 +167,8 @@ class BackupManager(
             cheatCount = cheatCount,
             userDataCount = userDataCount,
             gameDetailsCount = gameDetailsCount,
+            collectionCount = collectionCount,
+            customCoverCount = customCoverCount,
             mediaFileCount = mediaCount,
             availableBytes = availableBytes,
             hasEnoughSpace = hasEnoughSpace,
@@ -162,6 +187,8 @@ class BackupManager(
             var cheatCount = 0
             var userDataCount = 0
             var gameDetailsCount = 0
+            var collectionCount = 0
+            var customCoverCount = 0
             var mediaCount = 0
             var totalUncompressedBytes = 0L
 
@@ -244,6 +271,18 @@ class BackupManager(
                 if (options.includeUserData) {
                     reportProgress(stepSavesAndData)
                     val exportedUserData = allGames.map { game ->
+                        val coverZipEntry = if (game.customCoverUri != null) {
+                            customCoverManager.findCoverFileForGameId(game.id)?.let { coverFile ->
+                                val zipPath = "custom-covers/${coverFile.name}"
+                                val bytesWritten = addFileToZip(coverFile, zipPath, zipOut)
+                                customCoverCount++
+                                reportProgress(stepSavesAndData, bytesWritten)
+                                zipPath
+                            }
+                        } else {
+                            null
+                        }
+
                         ExportedGameUserData(
                             fileName = game.fileName,
                             baseName = game.fileName.substringBeforeLast('.'),
@@ -255,6 +294,7 @@ class BackupManager(
                             totalPlayTimeMs = game.totalPlayTimeMs,
                             lastPlayedAt = game.lastPlayedAt,
                             customName = game.customName,
+                            customCoverZipEntry = coverZipEntry,
                         )
                     }
                     userDataCount = exportedUserData.size
@@ -298,6 +338,34 @@ class BackupManager(
                         )
                     val gdBytes = addTextToZip(detailsJson, BackupManifest.GAMEDETAILS_FILE_NAME, zipOut)
                     reportProgress(stepSavesAndData, gdBytes)
+
+                    val allCollections = retrogradeDatabase.collectionDao().getAllCollectionsSync()
+                    val allCrossRefs = retrogradeDatabase.collectionDao().getAllCollectionCrossRefsSync()
+                    val refsByCollectionId = allCrossRefs.groupBy { it.collectionId }
+                    val exportedCollections = allCollections.map { col ->
+                        val gameRefs = refsByCollectionId[col.id].orEmpty().mapNotNull { ref ->
+                            val game = gameIdToGame[ref.gameId] ?: return@mapNotNull null
+                            ExportedCollectionGameRef(
+                                fileName = game.fileName,
+                                systemId = game.systemId,
+                                baseName = game.fileName.substringBeforeLast('.'),
+                                addedAt = ref.addedAt,
+                            )
+                        }
+                        ExportedCollection(
+                            name = col.name,
+                            createdAt = col.createdAt,
+                            games = gameRefs,
+                        )
+                    }
+                    collectionCount = exportedCollections.size
+                    val collectionsJson =
+                        json.encodeToString(
+                            ListSerializer(ExportedCollection.serializer()),
+                            exportedCollections,
+                        )
+                    val colBytes = addTextToZip(collectionsJson, BackupManifest.COLLECTIONS_FILE_NAME, zipOut)
+                    reportProgress(stepSavesAndData, colBytes)
                 }
 
                 if (options.includeCheats) {
@@ -315,6 +383,8 @@ class BackupManager(
                             enabled = cheat.enabled,
                             isMasterCode = cheat.isMasterCode,
                             orderIndex = cheat.orderIndex,
+                            exportId = cheat.id,
+                            masterCodeExportId = cheat.masterCodeId,
                         )
                     }
                     cheatCount = exportedCheats.size
@@ -350,6 +420,8 @@ class BackupManager(
                         cheatCount = cheatCount,
                         userDataCount = userDataCount,
                         gameDetailsCount = gameDetailsCount,
+                        collectionCount = collectionCount,
+                        customCoverCount = customCoverCount,
                         mediaCount = mediaCount,
                         totalUncompressedBytes = totalUncompressedBytes,
                     ),
@@ -395,9 +467,13 @@ class BackupManager(
         var statesRestored = 0
         var userDataRestored = 0
         var gameDetailsRestored = 0
+        var collectionsRestored = 0
+        var customCoversRestored = 0
         var cheatsRestored = 0
         var mediaRestored = 0
         var settingsRestored = false
+
+        val stagingCoversDir = File(appContext.cacheDir, "restore-custom-covers-${System.currentTimeMillis()}")
 
         try {
             val fileSizeBytes = runCatching {
@@ -411,6 +487,7 @@ class BackupManager(
 
             var userDataJson: String? = null
             var gameDetailsJson: String? = null
+            var collectionsJson: String? = null
             var cheatsJson: String? = null
             var settingsJson: String? = null
 
@@ -451,6 +528,9 @@ class BackupManager(
                         name == BackupManifest.GAMEDETAILS_FILE_NAME -> {
                             gameDetailsJson = zipIn.bufferedReader().readText()
                         }
+                        name == BackupManifest.COLLECTIONS_FILE_NAME -> {
+                            collectionsJson = zipIn.bufferedReader().readText()
+                        }
                         name == BackupManifest.CHEATS_FILE_NAME -> {
                             cheatsJson = zipIn.bufferedReader().readText()
                         }
@@ -485,6 +565,13 @@ class BackupManager(
                                 mediaRestored++
                             }
                         }
+                        name.startsWith("custom-covers/") -> {
+                            val rel = name.removePrefix("custom-covers/")
+                            val dest = resolveSafeZipTarget(stagingCoversDir, rel)
+                            if (dest != null) {
+                                extractEntryToFile(zipIn, dest)
+                            }
+                        }
                     }
 
                     zipIn.closeEntry()
@@ -493,6 +580,18 @@ class BackupManager(
             }
 
             onProgress(stepRestoringData, 0.85f, fileSizeBytes, fileSizeBytes)
+
+            val allGames = if (
+                !userDataJson.isNullOrEmpty() ||
+                !gameDetailsJson.isNullOrEmpty() ||
+                !collectionsJson.isNullOrEmpty() ||
+                !cheatsJson.isNullOrEmpty()
+            ) {
+                retrogradeDatabase.gameDao().selectAllGames()
+            } else {
+                emptyList()
+            }
+            val gameLookup = GameLookupIndex(allGames)
 
             if (!userDataJson.isNullOrEmpty()) {
                 val exportedData = runCatching {
@@ -503,18 +602,30 @@ class BackupManager(
                 }.getOrDefault(emptyList())
 
                 if (exportedData.isNotEmpty()) {
-                    val allGames = retrogradeDatabase.gameDao().selectAllGames()
-                    val gamesByFileName = allGames.associateBy { it.fileName }
-                    val gamesBySystemAndBase = allGames.associateBy { "${it.systemId}::${it.fileName.substringBeforeLast('.')}" }
-                    val gamesBySystemAndTitle = allGames.associateBy { "${it.systemId}::${it.title.lowercase().trim()}" }
-
                     val updatedGames = mutableListOf<Game>()
                     for (item in exportedData) {
-                        val match = gamesByFileName[item.fileName]
-                            ?: gamesBySystemAndBase["${item.systemId}::${item.baseName}"]
-                            ?: gamesBySystemAndTitle["${item.systemId}::${item.title.lowercase().trim()}"]
+                        val match = gameLookup.find(
+                            fileName = item.fileName,
+                            systemId = item.systemId,
+                            baseName = item.baseName,
+                            title = item.title,
+                        )
 
                         if (match != null) {
+                            val restoredCustomCoverUri = item.customCoverZipEntry
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { zipPath ->
+                                    val rel = zipPath.replace('\\', '/').removePrefix("custom-covers/")
+                                    val stagedFile = resolveSafeZipTarget(stagingCoversDir, rel)
+                                    if (stagedFile?.exists() == true) {
+                                        customCoverManager.importCoverFile(match.id, stagedFile)?.also {
+                                            customCoversRestored++
+                                        }
+                                    } else {
+                                        null
+                                    }
+                                }
+
                             val updated = match.copy(
                                 title = item.title.takeIf { it.isNotBlank() } ?: match.title,
                                 coverFrontUrl = item.coverFrontUrl ?: match.coverFrontUrl,
@@ -523,6 +634,7 @@ class BackupManager(
                                 totalPlayTimeMs = item.totalPlayTimeMs.coerceAtLeast(match.totalPlayTimeMs),
                                 lastPlayedAt = item.lastPlayedAt ?: match.lastPlayedAt,
                                 customName = item.customName ?: match.customName,
+                                customCoverUri = restoredCustomCoverUri ?: match.customCoverUri,
                             )
                             updatedGames.add(updated)
                             userDataRestored++
@@ -542,14 +654,9 @@ class BackupManager(
                 }.getOrDefault(emptyList())
 
                 if (exportedDetails.isNotEmpty()) {
-                    val allGames = retrogradeDatabase.gameDao().selectAllGames()
-                    val gamesByFileName = allGames.associateBy { it.fileName }
-                    val gamesBySystemAndBase = allGames.associateBy { "${it.systemId}::${it.fileName.substringBeforeLast('.')}" }
-
                     val detailsToInsert = mutableListOf<GameDetails>()
                     for (item in exportedDetails) {
-                        val match = gamesByFileName[item.fileName]
-                            ?: gamesBySystemAndBase["${item.systemId}::${item.fileName.substringBeforeLast('.')}"]
+                        val match = gameLookup.find(item.fileName, item.systemId)
                         if (match != null) {
                             val details = GameDetails(
                                 gameId = match.id,
@@ -579,6 +686,52 @@ class BackupManager(
                     }
                 }
             }
+            if (!collectionsJson.isNullOrEmpty()) {
+                val exportedCollections = runCatching {
+                    json.decodeFromString(
+                        ListSerializer(ExportedCollection.serializer()),
+                        collectionsJson!!,
+                    )
+                }.getOrDefault(emptyList())
+
+                if (exportedCollections.isNotEmpty()) {
+                    val collectionDao = retrogradeDatabase.collectionDao()
+                    val existingByName = collectionDao.getAllCollectionsSync()
+                        .associateBy { it.name.trim().lowercase() }
+                        .toMutableMap()
+
+                    for (col in exportedCollections) {
+                        val trimmedName = col.name.trim()
+                        if (trimmedName.isEmpty()) continue
+                        val normalizedName = trimmedName.lowercase()
+                        val targetCollectionId = existingByName[normalizedName]?.id ?: run {
+                            val newCollection = GameCollection(name = trimmedName, createdAt = col.createdAt)
+                            val newId = collectionDao.insertCollection(newCollection).toInt()
+                            existingByName[normalizedName] = newCollection.copy(id = newId)
+                            newId
+                        }
+
+                        for (ref in col.games) {
+                            val match = gameLookup.find(
+                                fileName = ref.fileName,
+                                systemId = ref.systemId,
+                                baseName = ref.baseName,
+                                allowNormalized = true,
+                            )
+                            if (match != null) {
+                                collectionDao.addGameToCollection(
+                                    GameCollectionCrossRef(
+                                        collectionId = targetCollectionId,
+                                        gameId = match.id,
+                                        addedAt = ref.addedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                                    ),
+                                )
+                            }
+                        }
+                        collectionsRestored++
+                    }
+                }
+            }
             if (!cheatsJson.isNullOrEmpty()) {
                 val exportedCheats = runCatching {
                     json.decodeFromString(
@@ -588,13 +741,11 @@ class BackupManager(
                 }.getOrDefault(emptyList())
 
                 if (exportedCheats.isNotEmpty()) {
-                    val allGames = retrogradeDatabase.gameDao().selectAllGames()
-                    val gamesByFileName = allGames.associateBy { it.fileName }
-                    val gamesBySystemAndBase = allGames.associateBy { "${it.systemId}::${it.fileName.substringBeforeLast('.')}" }
+                    val exportIdToNewId = mutableMapOf<Long, Long>()
+                    val pendingMasterLinks = mutableListOf<Pair<Cheat, Long>>()
 
                     for (item in exportedCheats) {
-                        val match = gamesByFileName[item.fileName]
-                            ?: gamesBySystemAndBase["${item.systemId}::${item.fileName.substringBeforeLast('.')}"]
+                        val match = gameLookup.find(item.fileName, item.systemId)
                         if (match != null) {
                             val cheat = Cheat(
                                 gameId = match.id,
@@ -607,9 +758,22 @@ class BackupManager(
                                 isMasterCode = item.isMasterCode,
                                 orderIndex = item.orderIndex,
                             )
-                            retrogradeDatabase.cheatDao().insertCheat(cheat)
+                            val newId = retrogradeDatabase.cheatDao().insertCheat(cheat)
+                            if (item.exportId != null) {
+                                exportIdToNewId[item.exportId] = newId
+                            }
+                            if (item.masterCodeExportId != null) {
+                                pendingMasterLinks.add(cheat.copy(id = newId) to item.masterCodeExportId)
+                            }
                             cheatsRestored++
                         }
+                    }
+
+                    for ((restoredCheat, oldMasterId) in pendingMasterLinks) {
+                        val newMasterId = exportIdToNewId[oldMasterId] ?: continue
+                        retrogradeDatabase.cheatDao().updateCheat(
+                            restoredCheat.copy(masterCodeId = newMasterId),
+                        )
                     }
                 }
             }
@@ -624,6 +788,8 @@ class BackupManager(
                 statesRestored = statesRestored,
                 userDataRestored = userDataRestored,
                 gameDetailsRestored = gameDetailsRestored,
+                collectionsRestored = collectionsRestored,
+                customCoversRestored = customCoversRestored,
                 cheatsRestored = cheatsRestored,
                 mediaRestored = mediaRestored,
                 settingsRestored = settingsRestored,
@@ -635,11 +801,45 @@ class BackupManager(
                 statesRestored = statesRestored,
                 userDataRestored = userDataRestored,
                 gameDetailsRestored = gameDetailsRestored,
+                collectionsRestored = collectionsRestored,
+                customCoversRestored = customCoversRestored,
                 cheatsRestored = cheatsRestored,
                 mediaRestored = mediaRestored,
                 settingsRestored = settingsRestored,
                 error = e.localizedMessage ?: "Unknown restore error",
             )
+        } finally {
+            stagingCoversDir.deleteRecursively()
+        }
+    }
+
+    private class GameLookupIndex(games: List<Game>) {
+        private val byFileName = games.associateBy { it.fileName }
+        private val bySystemAndBase = games.associateBy { "${it.systemId}::${it.fileName.substringBeforeLast('.')}" }
+        private val bySystemAndTitle = games.associateBy { "${it.systemId}::${it.title.lowercase().trim()}" }
+        private val bySystemAndNormalized = games
+            .mapNotNull { game ->
+                val key = LibraryGameArchiveManager.normalizeComparableKey(game.fileName.substringBeforeLast('.'))
+                if (key.isNotEmpty()) "${game.systemId}::$key" to game else null
+            }
+            .toMap()
+
+        fun find(
+            fileName: String,
+            systemId: String,
+            baseName: String = fileName.substringBeforeLast('.'),
+            title: String? = null,
+            allowNormalized: Boolean = false,
+        ): Game? {
+            return byFileName[fileName]
+                ?: bySystemAndBase["$systemId::$baseName"]
+                ?: title?.let { bySystemAndTitle["$systemId::${it.lowercase().trim()}"] }
+                ?: if (allowNormalized) {
+                    val normalizedKey = LibraryGameArchiveManager.normalizeComparableKey(baseName)
+                    if (normalizedKey.isNotEmpty()) bySystemAndNormalized["$systemId::$normalizedKey"] else null
+                } else {
+                    null
+                }
         }
     }
 

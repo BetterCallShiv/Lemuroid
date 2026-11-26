@@ -254,6 +254,12 @@ class BackupRestoreViewModel(
                     if (result.gameDetailsRestored > 0) {
                         append(if (result.gameDetailsRestored == 1) app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_details_singular) else app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_details_plural, result.gameDetailsRestored))
                     }
+                    if (result.collectionsRestored > 0) {
+                        append(if (result.collectionsRestored == 1) app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_collections_singular) else app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_collections_plural, result.collectionsRestored))
+                    }
+                    if (result.customCoversRestored > 0) {
+                        append(if (result.customCoversRestored == 1) app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_custom_covers_singular) else app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_custom_covers_plural, result.customCoversRestored))
+                    }
                     if (result.cheatsRestored > 0) {
                         append(if (result.cheatsRestored == 1) app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_cheats_singular) else app.getString(com.swordfish.lemuroid.R.string.backup_restore_summary_cheats_plural, result.cheatsRestored))
                     }

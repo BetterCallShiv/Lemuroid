@@ -19,6 +19,7 @@
 
 package com.swordfish.lemuroid.lib.library
 
+import android.content.Context
 import com.swordfish.lemuroid.common.coroutines.batchWithSizeAndTime
 import com.swordfish.lemuroid.lib.bios.BiosManager
 import com.swordfish.lemuroid.lib.library.covers.CustomCoverManager
@@ -44,23 +45,30 @@ import kotlinx.coroutines.flow.flatMapMerge
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.mapNotNull
 import timber.log.Timber
+import java.util.Collections
 
 class LemuroidLibrary(
+    private val appContext: Context,
     private val retrogradedb: RetrogradeDatabase,
     private val storageProviderRegistry: Lazy<StorageProviderRegistry>,
     private val gameMetadataProvider: Lazy<GameMetadataProvider>,
     private val biosManager: BiosManager,
     private val customCoverManager: CustomCoverManager,
 ) {
+    private val archiveManager by lazy {
+        LibraryGameArchiveManager(appContext, retrogradedb, customCoverManager)
+    }
+
     suspend fun indexLibrary() {
         val startedAtMs = System.currentTimeMillis()
+        val newlyInsertedGameIds = Collections.synchronizedSet(mutableSetOf<Int>())
 
         try {
-            indexProviders(startedAtMs)
+            indexProviders(startedAtMs, newlyInsertedGameIds)
         } catch (e: Throwable) {
             Timber.e(e, "Library indexing stopped due to exception")
         } finally {
-            cleanUp(startedAtMs)
+            cleanUp(startedAtMs, newlyInsertedGameIds)
         }
 
         val executionTime = System.currentTimeMillis() - startedAtMs
@@ -68,11 +76,14 @@ class LemuroidLibrary(
     }
 
     @OptIn(FlowPreview::class)
-    private suspend fun indexProviders(startedAtMs: Long) {
+    private suspend fun indexProviders(
+        startedAtMs: Long,
+        newlyInsertedGameIds: MutableSet<Int>,
+    ) {
         val gameMetadata = gameMetadataProvider.get()
         val enabledProviders = storageProviderRegistry.get().enabledProviders
         enabledProviders.asFlow()
-            .flatMapConcat { indexSingleProvider(it, startedAtMs, gameMetadata) }
+            .flatMapConcat { indexSingleProvider(it, startedAtMs, gameMetadata, newlyInsertedGameIds) }
             .collect()
     }
 
@@ -81,11 +92,12 @@ class LemuroidLibrary(
         provider: StorageProvider,
         startedAtMs: Long,
         gameMetadata: GameMetadataProvider,
+        newlyInsertedGameIds: MutableSet<Int>,
     ): Flow<Unit> {
         return provider.listBaseStorageFiles()
             .flatMapConcat { StorageFilesMerger.mergeDataFiles(provider, it).asFlow() }
             .batchWithSizeAndTime(MAX_BUFFER_SIZE, MAX_TIME)
-            .flatMapMerge { processBatch(it, provider, startedAtMs, gameMetadata) }
+            .flatMapMerge { processBatch(it, provider, startedAtMs, gameMetadata, newlyInsertedGameIds) }
     }
 
     private suspend fun processBatch(
@@ -93,6 +105,7 @@ class LemuroidLibrary(
         provider: StorageProvider,
         startedAtMs: Long,
         gameMetadata: GameMetadataProvider,
+        newlyInsertedGameIds: MutableSet<Int>,
     ) = flow<Unit> {
         val entries = batch.map { fetchEntriesFromDatabase(it) }
 
@@ -103,7 +116,7 @@ class LemuroidLibrary(
             entries.filterIsInstance<ScanEntry.File>()
                 .map { buildEntryFromMetadata(it.file, provider, gameMetadata, startedAtMs) }
 
-        handleNewEntries(newEntries, startedAtMs, provider)
+        handleNewEntries(newEntries, startedAtMs, provider, newlyInsertedGameIds)
     }
 
     private fun fetchEntriesFromDatabase(storageFile: GroupedStorageFiles): ScanEntry {
@@ -174,10 +187,11 @@ class LemuroidLibrary(
         )
     }
 
-    private fun handleNewEntries(
+    private suspend fun handleNewEntries(
         entries: List<ScanEntry>,
         startedAtMs: Long,
         provider: StorageProvider,
+        newlyInsertedGameIds: MutableSet<Int>,
     ) {
         val gameFiles =
             entries
@@ -188,13 +202,14 @@ class LemuroidLibrary(
                 .filterIsInstance<ScanEntry.File>()
                 .flatMap { it.file.allFiles() }
 
-        handleNewGames(gameFiles, startedAtMs)
+        handleNewGames(gameFiles, startedAtMs, newlyInsertedGameIds)
         handleUnknownFiles(provider, unknownFiles, startedAtMs)
     }
 
-    private fun handleNewGames(
+    private suspend fun handleNewGames(
         pairs: List<ScanEntry.GameFile>,
         startedAtMs: Long,
+        newlyInsertedGameIds: MutableSet<Int>,
     ) {
         val games =
             pairs
@@ -214,6 +229,16 @@ class LemuroidLibrary(
                 }
 
         retrogradedb.dataFileDao().insert(dataFiles)
+
+        games.zip(gameIds).forEach { (game, insertedId) ->
+            val newId = insertedId.toInt()
+            newlyInsertedGameIds.add(newId)
+            runCatching {
+                archiveManager.restoreFromArchiveIfMatched(game.copy(id = newId))
+            }.onFailure {
+                Timber.e(it, "Failed to restore archived library data for ${game.fileName}")
+            }
+        }
     }
 
     private fun handleUnknownFiles(
@@ -257,15 +282,24 @@ class LemuroidLibrary(
             .getOrNull()
     }
 
-    private fun cleanUp(startedAtMs: Long) {
+    private suspend fun cleanUp(
+        startedAtMs: Long,
+        newlyInsertedGameIds: Set<Int>,
+    ) {
         kotlin.runCatching {
             removeDeletedBios(startedAtMs)
+        }.onFailure {
+            Timber.e(it, "Failed deleting stale BIOS entries")
         }
         kotlin.runCatching {
-            removeDeletedGames(startedAtMs)
+            removeDeletedGames(startedAtMs, newlyInsertedGameIds)
+        }.onFailure {
+            Timber.e(it, "Failed removing deleted games")
         }
         kotlin.runCatching {
             removeDeletedDataFiles(startedAtMs)
+        }.onFailure {
+            Timber.e(it, "Failed deleting stale data files")
         }
     }
 
@@ -314,9 +348,42 @@ class LemuroidLibrary(
         retrogradedb.dataFileDao().delete(dataFiles)
     }
 
-    private fun removeDeletedGames(startedAtMs: Long) {
+    private suspend fun removeDeletedGames(
+        startedAtMs: Long,
+        newlyInsertedGameIds: Set<Int>,
+    ) {
         Timber.d("Deleting games from db before: $startedAtMs")
         val games = retrogradedb.gameDao().selectByLastIndexedAtLessThan(startedAtMs)
+        if (games.isEmpty()) return
+
+        val remainingNewCandidates =
+            if (newlyInsertedGameIds.isNotEmpty()) {
+                retrogradedb.gameDao()
+                    .selectByLastIndexedAtAtLeast(startedAtMs)
+                    .filter { it.id in newlyInsertedGameIds }
+                    .toMutableList()
+            } else {
+                mutableListOf()
+            }
+
+        val toArchive = mutableListOf<LibraryGameArchiveManager.GameDataSnapshot>()
+
+        for (deletedGame in games) {
+            val snapshot = archiveManager.captureSnapshot(deletedGame)
+            val replacement = LibraryGameArchiveManager.findReplacementCandidate(deletedGame, remainingNewCandidates)
+            if (replacement != null) {
+                remainingNewCandidates.remove(replacement)
+                if (snapshot.isWorthPreserving()) {
+                    archiveManager.migrateSnapshotToGame(snapshot, replacement)
+                }
+            } else if (snapshot.isWorthPreserving()) {
+                toArchive.add(snapshot)
+            }
+        }
+
+        if (toArchive.isNotEmpty()) {
+            archiveManager.archiveSnapshots(toArchive)
+        }
 
         // Clean up custom cover files before removing the database rows
         customCoverManager.deleteCoversForGames(games)

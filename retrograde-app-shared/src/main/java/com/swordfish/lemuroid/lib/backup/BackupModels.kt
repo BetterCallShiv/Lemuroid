@@ -23,6 +23,7 @@ data class BackupManifest(
         const val USERDATA_FILE_NAME = "userdata.json"
         const val CHEATS_FILE_NAME = "cheats.json"
         const val GAMEDETAILS_FILE_NAME = "gamedetails.json"
+        const val COLLECTIONS_FILE_NAME = "collections.json"
     }
 }
 
@@ -33,6 +34,8 @@ data class BackupStats(
     val cheatCount: Int = 0,
     val userDataCount: Int = 0,
     val gameDetailsCount: Int = 0,
+    val collectionCount: Int = 0,
+    val customCoverCount: Int = 0,
     val mediaCount: Int = 0,
     val totalUncompressedBytes: Long = 0L,
 )
@@ -49,6 +52,7 @@ data class ExportedGameUserData(
     val totalPlayTimeMs: Long = 0L,
     val lastPlayedAt: Long? = null,
     val customName: String? = null,
+    val customCoverZipEntry: String? = null,
 )
 
 @Serializable
@@ -84,6 +88,23 @@ data class ExportedCheat(
     val enabled: Boolean = true,
     val isMasterCode: Boolean = false,
     val orderIndex: Int = 0,
+    val exportId: Long? = null,
+    val masterCodeExportId: Long? = null,
+)
+
+@Serializable
+data class ExportedCollectionGameRef(
+    val fileName: String,
+    val systemId: String,
+    val baseName: String = fileName.substringBeforeLast('.'),
+    val addedAt: Long = 0L,
+)
+
+@Serializable
+data class ExportedCollection(
+    val name: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val games: List<ExportedCollectionGameRef> = emptyList(),
 )
 
 @Serializable
@@ -105,6 +126,8 @@ data class BackupEstimate(
     val cheatCount: Int,
     val userDataCount: Int,
     val gameDetailsCount: Int = 0,
+    val collectionCount: Int = 0,
+    val customCoverCount: Int = 0,
     val mediaFileCount: Int,
     val availableBytes: Long,
     val hasEnoughSpace: Boolean,
@@ -115,6 +138,8 @@ data class RestoreResult(
     val statesRestored: Int = 0,
     val userDataRestored: Int = 0,
     val gameDetailsRestored: Int = 0,
+    val collectionsRestored: Int = 0,
+    val customCoversRestored: Int = 0,
     val cheatsRestored: Int = 0,
     val mediaRestored: Int = 0,
     val settingsRestored: Boolean = false,
