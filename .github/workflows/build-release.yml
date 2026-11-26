@@ -65,19 +65,9 @@ jobs:
         if: always()
         run: rm -f "$GITHUB_WORKSPACE/release.jks"
 
-      - name: Order and Rename APKs for Release
+      - name: List Generated APKs
         run: |
-          cd lemuroid-app/build/outputs/apk/alphaFreeBundle/release/
-          for f in *.apk; do
-            case "$f" in
-              *armeabi-v7a*) mv "$f" "01-$f" ;;
-              *arm64-v8a*)   mv "$f" "02-$f" ;;
-              *x86_64*)      mv "$f" "04-$f" ;;
-              *x86*)         mv "$f" "03-$f" ;;
-              *universal*)   mv "$f" "05-$f" ;;
-            esac
-          done
-          ls -la
+          ls -la lemuroid-app/build/outputs/apk/alphaFreeBundle/release/
 
       - name: Publish APKs to GitHub Release
         if: ${{ inputs.create_release }}
