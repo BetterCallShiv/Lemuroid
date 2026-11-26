@@ -188,14 +188,7 @@ class GameDetailViewModel(
                 scrapeGame(gameWithDetails.game, force = false)
             }
         }
-        achievementsJob = viewModelScope.launch(Dispatchers.IO) {
-            val game = gameWithDetailsFlow.first()?.game ?: return@launch
-            metadataJob.join()
-            val crc = fileMetadataFlow.value.crc32
-            retroAchievementsRepository.getAchievementsFlow(game, crc).collect { state ->
-                _achievementsState.value = state
-            }
-        }
+        refreshAchievements()
     }
 
     fun refreshAchievements() {
@@ -212,6 +205,7 @@ class GameDetailViewModel(
 
     fun rescrape() {
         val game = uiState.value.gameWithDetails?.game ?: return
+        refreshAchievements()
         val previousJob = scrapeJob
         scrapeJob = viewModelScope.launch {
             previousJob?.cancelAndJoin()
