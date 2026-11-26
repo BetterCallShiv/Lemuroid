@@ -175,29 +175,35 @@
 
 ---
 
-## 🕹️ Supported Systems
+## 🕹️ Supported Systems & ROM Folders
 
-| System | Core |
-|---|---|
-| **Nintendo Entertainment System (NES)** | [fceumm](https://docs.libretro.com/library/fceumm/) |
-| **Super Nintendo (SNES)** | [snes9x](https://docs.libretro.com/library/snes9x/) |
-| **Game Boy (GB)** | [gambatte](https://docs.libretro.com/library/gambatte/) |
-| **Game Boy Color (GBC)** | [gambatte](https://docs.libretro.com/library/gambatte/) |
-| **Game Boy Advance (GBA)** | [mgba](https://docs.libretro.com/library/mgba/) |
-| **Nintendo 64 (N64)** | [mupen64plus](https://docs.libretro.com/library/mupen64plus/) |
-| **Nintendo DS (NDS)** | [desmume](https://docs.libretro.com/library/desmume/) / [melonDS](https://docs.libretro.com/library/melonds/) |
-| **Nintendo 3DS (3DS)** | [citra](https://docs.libretro.com/library/citra/) |
-| **Sega Genesis / Mega Drive (MD / GEN)** | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
-| **Sega Master System (SMS)** | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
-| **Sega Game Gear (GG)** | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
-| **Sega CD (SCD)** | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
-| **Sony PlayStation (PSX)** | [PCSX-ReARMed](https://docs.libretro.com/library/pcsx_rearmed/) |
-| **Sony PlayStation Portable (PSP)** | [ppsspp](https://docs.libretro.com/library/ppsspp/) |
-| **Arcade (FBNeo)** | [fbneo](https://github.com/libretro/FBNeo/) |
-| **Atari 2600 / 7800 / Lynx** | [stella](https://docs.libretro.com/library/stella/) / [prosystem](https://docs.libretro.com/library/prosystem/) / [handy](https://docs.libretro.com/library/handy/) |
-| **PC Engine / TurboGrafx-16 (PCE)** | [beetle_pce_fast](https://docs.libretro.com/library/beetle_pce_fast/) |
-| **Neo Geo Pocket / Color (NGP / NGPC)** | [mednafen_ngp](https://docs.libretro.com/library/beetle_neopop/) |
-| **WonderSwan / Color (WS / WSC)** | [beetle_cygne](https://docs.libretro.com/library/beetle_cygne/) |
+If you organize ROMs by folder, name each folder using the Folder column below. Cartridge ROMs can usually be detected automatically, while Arcade & Disc games files need their matching folder name to scan properly.
+
+| System | Folder | Extensions | Core |
+|---|---|---|---|
+| **Nintendo Entertainment System (NES)** | `nes` | `.nes`, `.zip` | [fceumm](https://docs.libretro.com/library/fceumm/) |
+| **Super Nintendo (SNES)** | `snes` | `.sfc`, `.smc`, `.zip` | [snes9x](https://docs.libretro.com/library/snes9x/) |
+| **Game Boy (GB)** | `gb` | `.gb`, `.zip` | [gambatte](https://docs.libretro.com/library/gambatte/) |
+| **Game Boy Color (GBC)** | `gbc` | `.gbc`, `.zip` | [gambatte](https://docs.libretro.com/library/gambatte/) |
+| **Game Boy Advance (GBA)** | `gba` | `.gba`, `.zip` | [mgba](https://docs.libretro.com/library/mgba/) |
+| **Nintendo 64 (N64)** | `n64` | `.n64`, `.z64`, `.zip` | [mupen64plus](https://docs.libretro.com/library/mupen64plus/) |
+| **Nintendo DS (NDS)** | `nds` | `.nds`, `.zip` | [desmume](https://docs.libretro.com/library/desmume/) / [melonDS](https://docs.libretro.com/library/melonds/) |
+| **Nintendo 3DS (3DS)** | `3ds` | `.3ds`, `.zip` | [citra](https://docs.libretro.com/library/citra/) |
+| **Sega Genesis / Mega Drive** | `md` | `.gen`, `.smd`, `.md`, `.zip` | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
+| **Sega Master System (SMS)** | `sms` | `.sms`, `.zip` | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
+| **Sega Game Gear (GG)** | `gg` | `.gg`, `.zip` | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
+| **Sega CD (SCD)** | `scd` | `.cue`, `.iso`, `.chd` | [genesis_plus_gx](https://docs.libretro.com/library/genesis_plus_gx/) |
+| **Sony PlayStation (PSX)** | `psx` | `.chd`, `.pbp`, `.cue`, `.iso`, `.m3u` | [PCSX-ReARMed](https://docs.libretro.com/library/pcsx_rearmed/) |
+| **Sony PlayStation Portable (PSP)** | `psp` | `.iso`, `.cso`, `.pbp` | [ppsspp](https://docs.libretro.com/library/ppsspp/) |
+| **Arcade (FBNeo)** | `fbneo` | `.zip` | [fbneo](https://github.com/libretro/FBNeo/) |
+| **Arcade (MAME 2003-Plus)** | `mame2003plus` | `.zip` | [mame2003_plus](https://docs.libretro.com/library/mame2003_plus/) |
+| **Atari 2600** | `atari2600` | `.a26`, `.zip` | [stella](https://docs.libretro.com/library/stella/) |
+| **Atari 7800** | `atari7800` | `.a78`, `.bin`, `.zip` | [prosystem](https://docs.libretro.com/library/prosystem/) |
+| **Atari Lynx** | `lynx` | `.lnx`, `.zip` | [handy](https://docs.libretro.com/library/handy/) |
+| **PC Engine / TurboGrafx-16** | `pce` | `.pce`, `.bin`, `.zip` | [beetle_pce_fast](https://docs.libretro.com/library/beetle_pce_fast/) |
+| **Neo Geo Pocket / Color** | `ngp` / `ngc` | `.ngp`, `.ngc`, `.zip` | [mednafen_ngp](https://docs.libretro.com/library/beetle_neopop/) |
+| **WonderSwan / Color** | `ws` / `wsc` | `.ws`, `.wsc`, `.zip` | [beetle_cygne](https://docs.libretro.com/library/beetle_cygne/) |
+| **MS-DOS** | `dos` | `.dosz` | [dosbox_pure](https://docs.libretro.com/library/dosbox_pure/) |
 
 ---
 
