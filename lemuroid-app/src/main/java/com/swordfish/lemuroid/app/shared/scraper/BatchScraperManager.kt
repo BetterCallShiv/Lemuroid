@@ -510,25 +510,12 @@ class BatchScraperManager(
             } else null
             val rawVideoUrl = if (shouldDownloadVideo) screenScraperData?.videoUrl else null
 
-            val distinctScreenshots = if (shouldDownloadScreenshots || shouldDownloadTitles) {
-                val candidateScreenshots = mutableListOf<String>()
-                if (shouldDownloadScreenshots) {
-                    val ssOnly = screenScraperData?.screenshotUrls?.filter { !it.contains("title", ignoreCase = true) } ?: emptyList()
-                    val igdbShots = alphaLemuroidData?.screenshots ?: emptyList()
-                    if (preferIgdb) {
-                        candidateScreenshots.addAll(igdbShots)
-                        candidateScreenshots.addAll(ssOnly)
-                    } else {
-                        candidateScreenshots.addAll(ssOnly)
-                        candidateScreenshots.addAll(igdbShots)
-                    }
-                }
-                if (shouldDownloadTitles) {
-                    val titlesOnly = screenScraperData?.screenshotUrls?.filter { it.contains("title", ignoreCase = true) } ?: emptyList()
-                    candidateScreenshots.addAll(titlesOnly)
-                }
-                candidateScreenshots.distinct().take(10)
-            } else emptyList()
+            val distinctScreenshots = screenScraperClient.selectScreenshotUrls(
+                igdbScreenshots = alphaLemuroidData?.screenshots,
+                screenScraperScreenshots = screenScraperData?.screenshotUrls,
+                includeGameplay = shouldDownloadScreenshots,
+                includeTitles = shouldDownloadTitles,
+            )
 
             val (
                 finalBoxArtUri,

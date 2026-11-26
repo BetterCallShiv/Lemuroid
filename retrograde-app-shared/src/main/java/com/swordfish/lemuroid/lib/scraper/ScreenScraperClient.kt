@@ -1,23 +1,11 @@
 package com.swordfish.lemuroid.lib.scraper
 
-import android.net.Uri
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
 class ScreenScraperClient {
-    companion object {
-        private const val MEDIA_PROXY_URL = "https://api.alphalemuroid.workers.dev/screenscraper/media"
-    }
-
-    fun buildMediaUrl(
-        jeuid: String,
-        systemEid: Int,
-        media: String,
-    ): String {
-        return "$MEDIA_PROXY_URL?systemeid=$systemEid&jeuid=${Uri.encode(jeuid)}&media=${Uri.encode(media)}"
-    }
-
+    @Suppress("UNUSED_PARAMETER")
     fun parseJeuJsonObject(
         jeu: JSONObject,
         systemEid: Int,
@@ -160,13 +148,10 @@ class ScreenScraperClient {
             }
         }
 
-        val jeuid = jeu.optString("id").takeIf { it.isNotBlank() }
-
         val bannerUrl = if (mediaSources.contains("banner")) {
             medias.firstOrNull { it.type.equals("fanart", ignoreCase = true) }?.url
                 ?: medias.firstOrNull { it.type.equals("steamgrid", ignoreCase = true) }?.url
                 ?: medias.firstOrNull { it.type.equals("background", ignoreCase = true) }?.url
-                ?: jeuid?.let { buildMediaUrl(it, systemEid, "fanart") }
         } else null
 
         val logoUrl = preferredRegions.firstNotNullOfOrNull { region ->
@@ -176,7 +161,6 @@ class ScreenScraperClient {
             }?.url
         } ?: medias.firstOrNull { it.type.equals("wheel", ignoreCase = true) }?.url
             ?: medias.firstOrNull { it.type?.contains("wheel", ignoreCase = true) == true }?.url
-            ?: jeuid?.let { buildMediaUrl(it, systemEid, "wheel(wor)") }
 
         val primaryBoxType = if (boxArtFormat.equals("3D", ignoreCase = true)) "box-3D" else "box-2D"
         val secondaryBoxType = if (primaryBoxType == "box-3D") "box-2D" else "box-3D"
@@ -194,7 +178,6 @@ class ScreenScraperClient {
                 }?.url
             } ?: medias.firstOrNull { it.type.equals(secondaryBoxType, ignoreCase = true) }?.url
             ?: medias.firstOrNull { it.type?.contains("box", ignoreCase = true) == true }?.url
-            ?: jeuid?.let { buildMediaUrl(it, systemEid, "$primaryBoxType(us)") }
 
         val boxArtBackUrl = preferredRegions.firstNotNullOfOrNull { region ->
             medias.firstOrNull {
@@ -206,7 +189,6 @@ class ScreenScraperClient {
         val videoUrl = if (mediaSources.contains("video")) {
             medias.firstOrNull { it.type.equals("video-normalized", ignoreCase = true) }?.url
                 ?: medias.firstOrNull { it.type.equals("video", ignoreCase = true) }?.url
-                ?: jeuid?.let { buildMediaUrl(it, systemEid, "video-normalized") }
         } else null
 
         val fromMedias = medias
@@ -223,23 +205,7 @@ class ScreenScraperClient {
             }
             .mapNotNull { it.url }
 
-        val screenshotUrls = if (fromMedias.isNotEmpty()) {
-            fromMedias.distinct().take(25)
-        } else if (jeuid != null) {
-            val fallbackList = mutableListOf<String>()
-            if (mediaSources.contains("ss")) {
-                fallbackList.add(buildMediaUrl(jeuid, systemEid, "ss(wor)"))
-            }
-            if (mediaSources.contains("sstitle")) {
-                fallbackList.add(buildMediaUrl(jeuid, systemEid, "sstitle(wor)"))
-            }
-            if (mediaSources.contains("fanart")) {
-                fallbackList.add(buildMediaUrl(jeuid, systemEid, "fanart"))
-            }
-            fallbackList
-        } else {
-            emptyList()
-        }
+        val screenshotUrls = fromMedias.distinct().take(25)
 
         return ScrapedGameData(
             title = title,
@@ -258,6 +224,31 @@ class ScreenScraperClient {
             videoUrl = videoUrl,
             scraperSource = "ScreenScraper",
         )
+    }
+
+    fun selectScreenshotUrls(
+        igdbScreenshots: List<String>?,
+        screenScraperScreenshots: List<String>?,
+        includeGameplay: Boolean,
+        includeTitles: Boolean,
+        maxCount: Int = 10,
+    ): List<String> {
+        if (!includeGameplay && !includeTitles) return emptyList()
+        val candidates = mutableListOf<String>()
+        if (includeGameplay) {
+            val igdbShots = igdbScreenshots.orEmpty().filter { it.isNotBlank() }
+            if (igdbShots.isNotEmpty()) {
+                candidates.addAll(igdbShots)
+            } else {
+                val ssOnly = screenScraperScreenshots.orEmpty().filter { !it.contains("title", ignoreCase = true) }
+                candidates.addAll(ssOnly)
+            }
+        }
+        if (includeTitles) {
+            val titlesOnly = screenScraperScreenshots.orEmpty().filter { it.contains("title", ignoreCase = true) }
+            candidates.addAll(titlesOnly)
+        }
+        return candidates.distinct().take(maxCount)
     }
 
     fun serializeScreenshots(screenshotUrls: List<String>): String {
