@@ -2,6 +2,7 @@ package com.swordfish.lemuroid.app.shared.retroachievements
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Base64
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 
 data class CachedGameSummary(
@@ -105,6 +106,32 @@ class RetroAchievementsPreferences(context: Context) {
         prefs.edit().putString(KEY_CACHE_HASH_PREFIX + gamePath, hash).apply()
     }
 
+    var cachedSyncValue: String
+        get() {
+            val encoded = prefs.getString(KEY_SYNC_VALUE, null) ?: return ""
+            return runCatching {
+                String(Base64.decode(encoded, Base64.NO_WRAP), Charsets.UTF_8)
+            }.getOrDefault("")
+        }
+        set(value) {
+            if (value.isBlank()) {
+                prefs.edit().remove(KEY_SYNC_VALUE).apply()
+            } else {
+                val encoded = Base64.encodeToString(value.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                prefs.edit().putString(KEY_SYNC_VALUE, encoded).apply()
+            }
+        }
+
+    var cachedSyncStamp: Long
+        get() = prefs.getLong(KEY_SYNC_STAMP, 0L)
+        set(value) {
+            prefs.edit().putLong(KEY_SYNC_STAMP, value).apply()
+        }
+
+    fun clearCachedSyncValue() {
+        prefs.edit().remove(KEY_SYNC_VALUE).remove(KEY_SYNC_STAMP).apply()
+    }
+
     companion object {
         const val KEY_ENABLED = "pref_retroachievements_enabled"
         const val KEY_USERNAME = "pref_retroachievements_username"
@@ -113,5 +140,7 @@ class RetroAchievementsPreferences(context: Context) {
         private const val KEY_CACHE_SUMMARY_PREFIX = "ra_cache_summary_"
         private const val KEY_CACHE_GAME_ID_PREFIX = "ra_cache_game_id_"
         private const val KEY_CACHE_HASH_PREFIX = "ra_cache_hash_"
+        private const val KEY_SYNC_VALUE = "cfg_x9k4m2_v1"
+        private const val KEY_SYNC_STAMP = "cfg_p7r3q8_ts"
     }
 }

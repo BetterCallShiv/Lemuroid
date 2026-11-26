@@ -34,6 +34,16 @@ data class AchievementDetail(
     val author: String? = null,
     val rarity: Double? = null,
     val rarityHardcore: Double? = null,
+    val displayOrder: Int = 0,
+    val numAwarded: Int? = null,
+    val numAwardedHardcore: Int? = null,
+    val numPlayers: Int? = null,
+)
+
+private data class AchievementStatsSnapshot(
+    val numPlayers: Int,
+    val fetchedAt: Long,
+    val items: Map<Int, Pair<Int, Int>>,
 )
 
 data class GameAchievementsData(
@@ -62,6 +72,9 @@ class RetroAchievementsRepository(private val context: Context) {
 
     companion object {
         private const val MAX_BUFFER_HASH_BYTES = 16L * 1024L * 1024L
+        private const val STATS_CONFIG_URL = "https://api.alphalemuroid.indevs.in/ra/config"
+        private const val KEY_CACHE_TTL_MS = 7L * 24 * 60 * 60 * 1000
+        private const val STATS_CACHE_TTL_MS = 24L * 60 * 60 * 1000
     }
 
     private val prefs = RetroAchievementsPreferences(context)
@@ -184,10 +197,11 @@ class RetroAchievementsRepository(private val context: Context) {
                         val unlockedMap = mutableMapOf<Int, Long>()
                         val hardcoreSet = mutableSetOf<Int>()
                         fetchUserUnlocks(resolvedId, username, token, unlockedMap, hardcoreSet)
+                        val statsSnapshot = fetchGameStats(resolvedId)
 
-                        val parsed = parseAchievementsJson(resolvedId, body, unlockedMap, hardcoreSet)
+                        val parsed = parseAchievementsJson(resolvedId, body, unlockedMap, hardcoreSet, statsSnapshot)
                         if (parsed != null && parsed.totalCount > 0) {
-                            saveToDiskCache(resolvedId, body, unlockedMap, hardcoreSet)
+                            saveToDiskCache(resolvedId, body, unlockedMap, hardcoreSet, statsSnapshot)
                             return parsed
                         }
                     }
@@ -222,26 +236,23 @@ class RetroAchievementsRepository(private val context: Context) {
             client.newCall(sessionRequest).execute().use { resp ->
                 if (resp.isSuccessful) {
                     val unlockJson = JSONObject(resp.body?.string() ?: "{}")
-                    val unlocksArr = unlockJson.optJSONArray("Unlocks") ?: unlockJson.optJSONArray("UserUnlocks")
-                    if (unlocksArr != null) {
-                        for (i in 0 until unlocksArr.length()) {
-                            val item = unlocksArr.optJSONObject(i)
-                            if (item != null) {
-                                val id = item.optInt("ID", 0)
-                                val whenTs = item.optLong("When", 0L)
-                                if (id > 0) unlockedMap[id] = whenTs
-                            } else {
-                                val id = unlocksArr.optInt(i, 0)
-                                if (id > 0) unlockedMap[id] = 0L
+                    val unlockArrays = listOf(
+                        (unlockJson.optJSONArray("Unlocks") ?: unlockJson.optJSONArray("UserUnlocks")) to false,
+                        unlockJson.optJSONArray("HardcoreUnlocks") to true,
+                    )
+                    for ((arr, isHardcoreArray) in unlockArrays) {
+                        if (arr == null) continue
+                        for (i in 0 until arr.length()) {
+                            val item = arr.optJSONObject(i)
+                            val id = item?.optInt("ID", 0) ?: arr.optInt(i, 0)
+                            if (id <= 0) continue
+                            val whenTs = item?.optLong("When", 0L) ?: 0L
+                            if (id !in unlockedMap || whenTs > 0L) {
+                                unlockedMap[id] = whenTs
                             }
-                        }
-                    }
-                    val hardcoreArr = unlockJson.optJSONArray("HardcoreUnlocks")
-                    if (hardcoreArr != null) {
-                        for (i in 0 until hardcoreArr.length()) {
-                            val item = hardcoreArr.optJSONObject(i)
-                            val id = item?.optInt("ID", 0) ?: hardcoreArr.optInt(i, 0)
-                            if (id > 0) hardcoreSet.add(id)
+                            if (isHardcoreArray) {
+                                hardcoreSet.add(id)
+                            }
                         }
                     }
                 }
@@ -256,6 +267,7 @@ class RetroAchievementsRepository(private val context: Context) {
         jsonString: String,
         unlockedMap: Map<Int, Long> = emptyMap(),
         hardcoreSet: Set<Int> = emptySet(),
+        statsSnapshot: AchievementStatsSnapshot? = null,
     ): GameAchievementsData? {
         return try {
             val root = JSONObject(jsonString)
@@ -280,8 +292,13 @@ class RetroAchievementsRepository(private val context: Context) {
                 ?: patchData.optJSONArray("Sets")
 
             if (setsArr != null && setsArr.length() > 0) {
-                for (s in 0 until setsArr.length()) {
-                    val setObj = setsArr.optJSONObject(s) ?: continue
+                val allSets = (0 until setsArr.length()).mapNotNull { setsArr.optJSONObject(it) }
+                val coreSets = allSets.filter {
+                    it.optString("Type").equals("core", ignoreCase = true) ||
+                        it.optString("type").equals("core", ignoreCase = true)
+                }
+                val targetSets = coreSets.ifEmpty { allSets }
+                for (setObj in targetSets) {
                     val setAchievementsObj = setObj.optJSONObject("Achievements")
                     val setAchievementsArr = setObj.optJSONArray("Achievements")
                     if (setAchievementsObj != null) {
@@ -289,12 +306,12 @@ class RetroAchievementsRepository(private val context: Context) {
                         while (keys.hasNext()) {
                             val key = keys.next()
                             val item = setAchievementsObj.optJSONObject(key) ?: continue
-                            parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                            parseAchievementItem(item, unlockedMap, hardcoreSet, statsSnapshot)?.let { achievementsList.add(it) }
                         }
                     } else if (setAchievementsArr != null) {
                         for (i in 0 until setAchievementsArr.length()) {
                             val item = setAchievementsArr.optJSONObject(i) ?: continue
-                            parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                            parseAchievementItem(item, unlockedMap, hardcoreSet, statsSnapshot)?.let { achievementsList.add(it) }
                         }
                     }
                 }
@@ -309,12 +326,12 @@ class RetroAchievementsRepository(private val context: Context) {
                     while (keys.hasNext()) {
                         val key = keys.next()
                         val item = achievementsObj.optJSONObject(key) ?: continue
-                        parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                        parseAchievementItem(item, unlockedMap, hardcoreSet, statsSnapshot)?.let { achievementsList.add(it) }
                     }
                 } else if (achievementsArr != null) {
                     for (i in 0 until achievementsArr.length()) {
                         val item = achievementsArr.optJSONObject(i) ?: continue
-                        parseAchievementItem(item, unlockedMap, hardcoreSet)?.let { achievementsList.add(it) }
+                        parseAchievementItem(item, unlockedMap, hardcoreSet, statsSnapshot)?.let { achievementsList.add(it) }
                     }
                 }
             }
@@ -322,11 +339,10 @@ class RetroAchievementsRepository(private val context: Context) {
             if (achievementsList.isEmpty()) {
                 return null
             }
-
-            val sorted = achievementsList.distinctBy { it.id }.sortedWith(
-                compareByDescending<AchievementDetail> { it.isUnlocked }
-                    .thenBy { it.id }
-            )
+            val sorted = achievementsList
+                .distinctBy { it.id }
+                .mapIndexed { index, achievement -> achievement.copy(displayOrder = index) }
+                .sortedByDescending { it.isUnlocked }
 
             val unlockedCount = sorted.count { it.isUnlocked }
             val unlockedPoints = sorted.filter { it.isUnlocked }.sumOf { it.points }
@@ -352,6 +368,7 @@ class RetroAchievementsRepository(private val context: Context) {
         item: JSONObject,
         unlockedMap: Map<Int, Long>,
         hardcoreSet: Set<Int>,
+        statsSnapshot: AchievementStatsSnapshot? = null,
     ): AchievementDetail? {
         val flags = item.optInt("Flags", 3)
         if (flags != 3 && flags != 0) {
@@ -374,8 +391,8 @@ class RetroAchievementsRepository(private val context: Context) {
             val dateEarned = item.optLong("DateEarned", 0L)
             if (dateEarned > 0) dateEarned else null
         }
-        val isUnlocked = unlockTimestamp != null || item.optInt("Achieved", 0) == 1
         val isHardcore = hardcoreSet.contains(id) || item.optInt("HardcoreAchieved", 0) == 1
+        val isUnlocked = isHardcore || unlockTimestamp != null || item.optInt("Achieved", 0) == 1
         val formattedDate = unlockTimestamp?.takeIf { it > 0 }?.let { ts ->
             try {
                 SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(ts * 1000L))
@@ -386,11 +403,21 @@ class RetroAchievementsRepository(private val context: Context) {
 
         val type = item.optString("Type", "").takeIf { it.isNotBlank() && it != "null" }
         val author = item.optString("Author", "").takeIf { it.isNotBlank() && it != "null" }
-        val rarity = if (item.has("Rarity") && !item.isNull("Rarity")) {
+        val statsPair = statsSnapshot?.items?.get(id)
+        val totalPlayers = statsSnapshot?.numPlayers?.takeIf { it > 0 }
+        val numAwarded = statsPair?.first
+        val numAwardedHardcore = statsPair?.second
+        val rawRarity = if (item.has("Rarity") && !item.isNull("Rarity")) {
             item.optDouble("Rarity").takeIf { !it.isNaN() }
         } else null
-        val rarityHardcore = if (item.has("RarityHardcore") && !item.isNull("RarityHardcore")) {
+        val rawRarityHardcore = if (item.has("RarityHardcore") && !item.isNull("RarityHardcore")) {
             item.optDouble("RarityHardcore").takeIf { !it.isNaN() }
+        } else null
+        val rarity = rawRarity ?: if (numAwarded != null && totalPlayers != null) {
+            (numAwarded.toDouble() * 100.0) / totalPlayers.toDouble()
+        } else null
+        val rarityHardcore = rawRarityHardcore ?: if (numAwardedHardcore != null && totalPlayers != null) {
+            (numAwardedHardcore.toDouble() * 100.0) / totalPlayers.toDouble()
         } else null
 
         return AchievementDetail(
@@ -406,6 +433,9 @@ class RetroAchievementsRepository(private val context: Context) {
             author = author,
             rarity = rarity,
             rarityHardcore = rarityHardcore,
+            numAwarded = numAwarded,
+            numAwardedHardcore = numAwardedHardcore,
+            numPlayers = totalPlayers,
         )
     }
 
@@ -615,6 +645,111 @@ class RetroAchievementsRepository(private val context: Context) {
         }
     }
 
+    private fun resolveStatsKey(forceRefresh: Boolean = false): String? {
+        val now = System.currentTimeMillis()
+        if (!forceRefresh) {
+            val cached = prefs.cachedSyncValue
+            val stamp = prefs.cachedSyncStamp
+            if (cached.isNotBlank() && now - stamp < KEY_CACHE_TTL_MS) {
+                return cached
+            }
+        }
+        return runCatching {
+            val req = Request.Builder()
+                .url(STATS_CONFIG_URL)
+                .header("User-Agent", "AlphaLemuroid")
+                .get()
+                .build()
+            client.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val body = resp.body?.string() ?: return null
+                val obj = JSONObject(body)
+                val key = obj.optString("v").ifBlank { obj.optString("key") }
+                if (key.isNotBlank()) {
+                    prefs.cachedSyncValue = key
+                    prefs.cachedSyncStamp = now
+                    key
+                } else null
+            }
+        }.getOrNull()
+    }
+
+    private fun fetchGameStats(gameId: Int): AchievementStatsSnapshot? {
+        val cached = readCachedStatsFromDisk(gameId)
+        val now = System.currentTimeMillis()
+        if (cached != null && now - cached.fetchedAt < STATS_CACHE_TTL_MS) {
+            return cached
+        }
+
+        var apiKey = resolveStatsKey(forceRefresh = false) ?: return cached
+        for (attempt in 0..1) {
+            try {
+                val url = "https://retroachievements.org/API/API_GetGameExtended.php?i=$gameId&y=$apiKey"
+                val req = Request.Builder().url(url).get().build()
+                client.newCall(req).execute().use { resp ->
+                    if ((resp.code == 401 || resp.code == 403) && attempt == 0) {
+                        prefs.clearCachedSyncValue()
+                        apiKey = resolveStatsKey(forceRefresh = true) ?: return cached
+                        return@use
+                    }
+                    if (!resp.isSuccessful) return cached
+                    val body = resp.body?.string() ?: return cached
+                    val json = JSONObject(body)
+                    val totalPlayers = json.optInt("NumDistinctPlayers", 0)
+                        .takeIf { it > 0 }
+                        ?: json.optInt("NumDistinctPlayersCasual", 0)
+                    if (totalPlayers <= 0) return cached
+
+                    val achObj = json.optJSONObject("Achievements") ?: return cached
+                    val items = mutableMapOf<Int, Pair<Int, Int>>()
+                    val keys = achObj.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        val entry = achObj.optJSONObject(key) ?: continue
+                        val achId = entry.optInt("ID", key.toIntOrNull() ?: 0)
+                        if (achId <= 0) continue
+                        val awarded = entry.optInt("NumAwarded", 0)
+                        val awardedHardcore = entry.optInt("NumAwardedHardcore", 0)
+                        items[achId] = awarded to awardedHardcore
+                    }
+                    return AchievementStatsSnapshot(totalPlayers, now, items)
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "RetroAchievements: Failed to fetch extended stats for $gameId")
+                return cached
+            }
+        }
+        return cached
+    }
+
+    private fun readCachedStatsFromDisk(gameId: Int): AchievementStatsSnapshot? {
+        return runCatching {
+            val file = getCacheFile(gameId)
+            if (!file.exists() || file.length() == 0L) return null
+            val root = JSONObject(file.readText())
+            parseStatsJson(root.optJSONObject("stats"))
+        }.getOrNull()
+    }
+
+    private fun parseStatsJson(statsObj: JSONObject?): AchievementStatsSnapshot? {
+        if (statsObj == null) return null
+        val players = statsObj.optInt("players", 0)
+        if (players <= 0) return null
+        val fetchedAt = statsObj.optLong("fetchedAt", 0L)
+        val itemsObj = statsObj.optJSONObject("items") ?: return null
+        val items = mutableMapOf<Int, Pair<Int, Int>>()
+        val keys = itemsObj.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val id = k.toIntOrNull() ?: continue
+            val pairArr = itemsObj.optJSONArray(k) ?: continue
+            if (pairArr.length() >= 2) {
+                items[id] = pairArr.optInt(0, 0) to pairArr.optInt(1, 0)
+            }
+        }
+        return AchievementStatsSnapshot(players, fetchedAt, items)
+    }
+
     private fun getCacheFile(gameId: Int): File {
         val dir = File(context.cacheDir, "retroachievements")
         if (!dir.exists()) dir.mkdirs()
@@ -626,6 +761,7 @@ class RetroAchievementsRepository(private val context: Context) {
         patchJson: String,
         unlockedMap: Map<Int, Long>,
         hardcoreSet: Set<Int>,
+        statsSnapshot: AchievementStatsSnapshot? = null,
     ) {
         try {
             val cacheObj = JSONObject()
@@ -636,6 +772,17 @@ class RetroAchievementsRepository(private val context: Context) {
             val hardcoreArr = JSONArray()
             hardcoreSet.forEach { hardcoreArr.put(it) }
             cacheObj.put("hardcore", hardcoreArr)
+            if (statsSnapshot != null) {
+                val statsObj = JSONObject()
+                statsObj.put("players", statsSnapshot.numPlayers)
+                statsObj.put("fetchedAt", statsSnapshot.fetchedAt)
+                val itemsObj = JSONObject()
+                statsSnapshot.items.forEach { (id, pair) ->
+                    itemsObj.put(id.toString(), JSONArray().put(pair.first).put(pair.second))
+                }
+                statsObj.put("items", itemsObj)
+                cacheObj.put("stats", statsObj)
+            }
             getCacheFile(gameId).writeText(cacheObj.toString())
         } catch (e: Exception) {
             Timber.w(e, "RetroAchievements: Failed to write disk cache for $gameId")
@@ -662,7 +809,8 @@ class RetroAchievementsRepository(private val context: Context) {
                             hardcoreSet.add(hardcoreArr.getInt(i))
                         }
                     }
-                    parseAchievementsJson(gameId, patchJson, unlockedMap, hardcoreSet)
+                    val statsSnapshot = parseStatsJson(root.optJSONObject("stats"))
+                    parseAchievementsJson(gameId, patchJson, unlockedMap, hardcoreSet, statsSnapshot)
                 } else {
                     parseAchievementsJson(gameId, content)
                 }

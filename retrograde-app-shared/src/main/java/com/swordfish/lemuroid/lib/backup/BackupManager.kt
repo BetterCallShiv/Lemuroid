@@ -888,7 +888,7 @@ class BackupManager(
     ): JsonObject {
         return buildJsonObject {
             prefs.all.forEach { (key, value) ->
-                if (value == null || (!includeCredentials && isCredentialKey(key))) {
+                if (value == null || isNeverBackedUpKey(key) || (!includeCredentials && isCredentialKey(key))) {
                     return@forEach
                 }
                 when (value) {
@@ -919,6 +919,7 @@ class BackupManager(
         key: String,
         element: kotlinx.serialization.json.JsonElement,
     ) {
+        if (isNeverBackedUpKey(key)) return
         if (element is JsonPrimitive) {
             if (element.isString) {
                 editor.putString(key, element.content)
@@ -983,7 +984,13 @@ class BackupManager(
     companion object {
         private const val HARMONY_PREFS_SECTION = "__harmony__"
         private const val LEGACY_PREFS_SECTION = "__legacy__"
+        private val NEVER_BACKED_UP_PREF_KEYS = setOf(
+            "cfg_x9k4m2_v1",
+            "cfg_p7r3q8_ts",
+        )
     }
+
+    private fun isNeverBackedUpKey(key: String): Boolean = key in NEVER_BACKED_UP_PREF_KEYS
 
     private fun isCredentialKey(key: String): Boolean {
         return key.contains("password", ignoreCase = true) ||

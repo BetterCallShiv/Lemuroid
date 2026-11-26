@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.common.kotlin.calculateRomCrc32
+import com.swordfish.lemuroid.common.kotlin.openUriInputStream
 import com.swordfish.lemuroid.lib.cheats.cht.ChtDiscoveryManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -20,6 +21,7 @@ import com.swordfish.lemuroid.lib.scraper.ScreenScraperClient
 import com.swordfish.lemuroid.lib.scraper.ScreenScraperSystemMapper
 import com.swordfish.lemuroid.metadata.libretrodb.db.LibretroDBManager
 import com.swordfish.lemuroid.app.shared.retroachievements.AchievementsUiState
+import com.swordfish.lemuroid.app.shared.retroachievements.RetroAchievementsManager
 import com.swordfish.lemuroid.app.shared.retroachievements.RetroAchievementsRepository
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CancellationException
@@ -102,7 +104,7 @@ class GameDetailViewModel(
             cheatCount = cheats.size,
             isScraping = isScraping,
             screenshotUrls = screenshots,
-            crc32 = fileMeta.crc32,
+            crc32 = fileMeta.crc32 ?: gameWithDetails?.details?.crc32?.takeIf { it.isNotBlank() && it != "0" },
             actualFileName = fileMeta.actualFileName,
             fileSizeFormatted = fileMeta.fileSizeFormatted,
         )
@@ -160,7 +162,7 @@ class GameDetailViewModel(
                     game.fileName.endsWith(".zip", ignoreCase = true) ||
                     diskName?.endsWith(".zip", ignoreCase = true) == true
                 val computedCrc = runCatching {
-                    appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    appContext.openUriInputStream(uri)?.use { stream ->
                         stream.calculateRomCrc32(
                             fileName = diskName ?: game.fileName,
                             isArcadeZip = isArcadeZip,
@@ -189,6 +191,11 @@ class GameDetailViewModel(
             }
         }
         refreshAchievements()
+        viewModelScope.launch {
+            RetroAchievementsManager.unlockEvents.collect {
+                refreshAchievements()
+            }
+        }
     }
 
     fun refreshAchievements() {
@@ -198,6 +205,9 @@ class GameDetailViewModel(
             metadataJob.join()
             val crc = fileMetadataFlow.value.crc32
             retroAchievementsRepository.getAchievementsFlow(game, crc).collect { state ->
+                if (state is AchievementsUiState.Loading && _achievementsState.value is AchievementsUiState.Success) {
+                    return@collect
+                }
                 _achievementsState.value = state
             }
         }

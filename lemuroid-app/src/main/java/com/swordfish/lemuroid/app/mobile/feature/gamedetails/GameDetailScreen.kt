@@ -73,6 +73,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -109,7 +112,29 @@ fun GameDetailScreen(
     val state by viewModel.uiState.collectAsState()
     val achievementsState by viewModel.achievementsState.collectAsState()
     val context = LocalContext.current
-    val isHardcore = remember { RetroAchievementsPreferences(context).hardcore }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isHardcore by remember { mutableStateOf(RetroAchievementsPreferences(context).hardcore) }
+    var hasPaused by remember { mutableStateOf(false) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> hasPaused = true
+                Lifecycle.Event.ON_RESUME -> {
+                    isHardcore = RetroAchievementsPreferences(context).hardcore
+                    if (hasPaused) {
+                        hasPaused = false
+                        viewModel.refreshAchievements()
+                    }
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     val gameWithDetails = state.gameWithDetails
     val game = gameWithDetails?.game
     var pendingChipFilter by remember { mutableStateOf<DetailChipFilter?>(null) }
@@ -554,6 +579,7 @@ fun GameDetailScreen(
 
             val synopsis = details?.synopsis
             if (!synopsis.isNullOrBlank()) {
+                val hasExpandToggle = synopsis.length > 200
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -566,7 +592,12 @@ fun GameDetailScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
+                            .padding(
+                                start = 16.dp,
+                                top = 16.dp,
+                                end = 16.dp,
+                                bottom = if (hasExpandToggle) 10.dp else 16.dp,
+                            ),
                     ) {
                         Text(
                             text = stringResource(R.string.game_details_about),
@@ -582,10 +613,14 @@ fun GameDetailScreen(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.animateContentSize(),
                         )
-                        if (synopsis.length > 200) {
-                            TextButton(
-                                onClick = { synopsisExpanded = !synopsisExpanded },
-                                modifier = Modifier.align(Alignment.End),
+                        if (hasExpandToggle) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.End)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { synopsisExpanded = !synopsisExpanded }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp),
                             ) {
                                 Text(
                                     text = if (synopsisExpanded) {
@@ -593,12 +628,14 @@ fun GameDetailScreen(
                                     } else {
                                         stringResource(R.string.game_details_read_more)
                                     },
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
                             }
                         }
                     }
                 }
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
             GameDetailAchievementsSection(
@@ -607,7 +644,7 @@ fun GameDetailScreen(
                 onRefresh = { viewModel.refreshAchievements() },
             )
             if (achievementsState is AchievementsUiState.Success || achievementsState is AchievementsUiState.Loading || achievementsState is AchievementsUiState.Error) {
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
             Card(

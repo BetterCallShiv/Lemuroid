@@ -386,7 +386,7 @@
     <string name="scraper_notification_complete_all_title">Scraping completed: All platforms</string>
     <string name="scraper_notification_complete_all_message">Scraped %1$d of %2$d games across all platforms.</string>
     <string name="game_details_about">About</string>
-    <string name="game_details_file_info">File information</string>
+    <string name="game_details_file_info">File Information</string>
     <string name="game_details_system">System</string>
     <string name="game_details_filename">Filename</string>
     <string name="game_details_rom_size">Size</string>
@@ -547,7 +547,7 @@
     <string name="ra_toast_logged_in_as">Logged in as %1$s</string>
     <string name="ra_toast_logged_out">Logged out</string>
     <string name="ra_toast_login_failed">RA Login Failed: %1$s</string>
-    <string name="ra_game_details_header">RetroAchievements</string>
+    <string name="ra_game_details_header">Achievements</string>
     <string name="ra_game_details_hardcore">HARDCORE</string>
     <string name="ra_game_details_softcore">SOFTCORE</string>
     <string name="ra_type_progression">Progression</string>
@@ -556,8 +556,17 @@
     <string name="ra_status_locked">Locked</string>
     <string name="ra_rarity_format">%1$.1f%% of players</string>
     <string name="ra_rarity_hardcore_format">%1$.1f%% of players (%2$.1f%% Hardcore)</string>
+    <string name="ra_stats_players_hardcore">%1$s (%2$s) of %3$s</string>
+    <string name="ra_stats_players_total">%1$s of %2$s</string>
+    <string name="ra_stats_unlock_rate">%1$.2f%% unlock rate</string>
+    <string name="ra_bar_hint_hardcore_counts">Hardcore: %1$s players (%2$.2f%%)</string>
+    <string name="ra_bar_hint_hardcore_pct">Hardcore: %1$.2f%% of players</string>
+    <string name="ra_bar_hint_softcore_counts">Softcore: %1$s players (%2$.2f%%)</string>
+    <string name="ra_bar_hint_softcore_pct">Softcore: %1$.2f%% of players</string>
+    <string name="ra_bar_hint_locked_counts">Locked: %1$s players (%2$.2f%%)</string>
+    <string name="ra_bar_hint_locked_pct">Locked: %1$.2f%% of players</string>
     <string name="ra_unlocked_trophy_format">🏆 %1$s</string>
-    <string name="ra_view_on_web">View on RA</string>
+    <string name="ra_view_on_web">View</string>
     <string name="ra_game_details_progress">%1$d of %2$d Unlocked (%3$d/%4$d pts)</string>
     <string name="ra_game_details_view_all">View All (%1$d)</string>
     <string name="ra_game_details_unlocked_on">Unlocked %1$s</string>
@@ -568,6 +577,17 @@
     <string name="ra_game_details_filter_unlocked">Unlocked (%1$d)</string>
     <string name="ra_game_details_filter_locked">Locked (%1$d)</string>
     <string name="ra_game_details_points_badge">+%1$d pts</string>
+    <string name="ra_sort_unlocked_first">Unlocked first</string>
+    <string name="ra_sort_display_first">Display order (first)</string>
+    <string name="ra_sort_display_last">Display order (last)</string>
+    <string name="ra_sort_won_most">Won by (most)</string>
+    <string name="ra_sort_won_least">Won by (least)</string>
+    <string name="ra_sort_points_most">Points (most)</string>
+    <string name="ra_sort_points_least">Points (least)</string>
+    <string name="ra_sort_title_asc">Title (A - Z)</string>
+    <string name="ra_sort_title_desc">Title (Z - A)</string>
+    <string name="ra_sort_type_asc">Type (asc)</string>
+    <string name="ra_sort_type_desc">Type (desc)</string>
     <string name="game_menu_disabled_in_hardcore">Disabled in Hardcore Mode</string>
 
     <!-- Backup and Restore -->

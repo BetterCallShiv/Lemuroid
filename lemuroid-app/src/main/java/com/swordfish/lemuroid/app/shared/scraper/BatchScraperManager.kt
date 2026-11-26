@@ -13,6 +13,7 @@ import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.mobile.shared.NotificationsManager
 import com.swordfish.lemuroid.common.kotlin.calculateRomCrc32
 import com.swordfish.lemuroid.common.kotlin.isZipped
+import com.swordfish.lemuroid.common.kotlin.openUriInputStream
 import com.swordfish.lemuroid.lib.library.MetaSystemID
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.entity.Game
@@ -400,7 +401,7 @@ class BatchScraperManager(
 
             if (uri != null) {
                 runCatching {
-                    appContext.contentResolver.openInputStream(uri)?.use { stream ->
+                    appContext.openUriInputStream(uri)?.use { stream ->
                         crc = stream.calculateRomCrc32(
                             fileName = game.fileName,
                             isArcadeZip = isArcadeZip,
@@ -410,8 +411,14 @@ class BatchScraperManager(
                     }
                 }
                 runCatching {
-                    appContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                        fileSize = pfd.statSize.takeIf { it > 0 }
+                    if (uri.scheme == null || uri.scheme.equals("file", ignoreCase = true)) {
+                        val path = uri.path ?: uri.toString().takeIf { it.startsWith("/") }
+                        fileSize = path?.let { java.io.File(it).takeIf(java.io.File::exists)?.length()?.takeIf { len -> len > 0L } }
+                    }
+                    if (fileSize == null) {
+                        appContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                            fileSize = pfd.statSize.takeIf { it > 0 }
+                        }
                     }
                 }
             }

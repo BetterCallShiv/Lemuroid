@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,15 +26,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SortByAlpha
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -51,11 +60,11 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.SheetValue
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -66,7 +75,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
@@ -82,6 +94,66 @@ import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.shared.retroachievements.AchievementDetail
 import com.swordfish.lemuroid.app.shared.retroachievements.AchievementsUiState
 import com.swordfish.lemuroid.app.shared.retroachievements.GameAchievementsData
+import java.text.NumberFormat
+import java.util.Locale
+
+private enum class BarSegmentHint {
+    HARDCORE,
+    SOFTCORE,
+    LOCKED,
+}
+
+private enum class AchievementSortOrder(
+    val labelResId: Int,
+    val icon: ImageVector,
+) {
+    UNLOCKED_FIRST(R.string.ra_sort_unlocked_first, Icons.Filled.LockOpen),
+    DISPLAY_FIRST(R.string.ra_sort_display_first, Icons.Filled.ArrowDownward),
+    DISPLAY_LAST(R.string.ra_sort_display_last, Icons.Filled.ArrowUpward),
+    WON_BY_MOST(R.string.ra_sort_won_most, Icons.Filled.Group),
+    WON_BY_LEAST(R.string.ra_sort_won_least, Icons.Filled.Group),
+    POINTS_MOST(R.string.ra_sort_points_most, Icons.Filled.WorkspacePremium),
+    POINTS_LEAST(R.string.ra_sort_points_least, Icons.Filled.WorkspacePremium),
+    TITLE_ASC(R.string.ra_sort_title_asc, Icons.Filled.SortByAlpha),
+    TITLE_DESC(R.string.ra_sort_title_desc, Icons.Filled.SortByAlpha),
+    TYPE_ASC(R.string.ra_sort_type_asc, Icons.Filled.LocalOffer),
+    TYPE_DESC(R.string.ra_sort_type_desc, Icons.Filled.LocalOffer),
+}
+
+private fun typeSortRank(type: String?): Int = when (type?.lowercase(Locale.ROOT)) {
+    "progression" -> 0
+    "win_condition" -> 1
+    "missable" -> 2
+    else -> 3
+}
+
+private fun sortAchievements(
+    items: List<AchievementDetail>,
+    order: AchievementSortOrder,
+): List<AchievementDetail> = when (order) {
+    AchievementSortOrder.UNLOCKED_FIRST ->
+        items.sortedWith(compareByDescending<AchievementDetail> { it.isUnlocked }.thenBy { it.displayOrder })
+    AchievementSortOrder.DISPLAY_FIRST ->
+        items.sortedBy { it.displayOrder }
+    AchievementSortOrder.DISPLAY_LAST ->
+        items.sortedByDescending { it.displayOrder }
+    AchievementSortOrder.WON_BY_MOST ->
+        items.sortedWith(compareByDescending<AchievementDetail> { it.rarity ?: it.rarityHardcore ?: -1.0 }.thenBy { it.displayOrder })
+    AchievementSortOrder.WON_BY_LEAST ->
+        items.sortedWith(compareBy<AchievementDetail> { it.rarity ?: it.rarityHardcore ?: Double.MAX_VALUE }.thenBy { it.displayOrder })
+    AchievementSortOrder.POINTS_MOST ->
+        items.sortedWith(compareByDescending<AchievementDetail> { it.points }.thenBy { it.displayOrder })
+    AchievementSortOrder.POINTS_LEAST ->
+        items.sortedWith(compareBy<AchievementDetail> { it.points }.thenBy { it.displayOrder })
+    AchievementSortOrder.TITLE_ASC ->
+        items.sortedWith(compareBy<AchievementDetail> { it.title.lowercase(Locale.ROOT) }.thenBy { it.displayOrder })
+    AchievementSortOrder.TITLE_DESC ->
+        items.sortedWith(compareByDescending<AchievementDetail> { it.title.lowercase(Locale.ROOT) }.thenBy { it.displayOrder })
+    AchievementSortOrder.TYPE_ASC ->
+        items.sortedWith(compareBy<AchievementDetail> { typeSortRank(it.type) }.thenBy { it.displayOrder })
+    AchievementSortOrder.TYPE_DESC ->
+        items.sortedWith(compareByDescending<AchievementDetail> { typeSortRank(it.type) }.thenBy { it.displayOrder })
+}
 
 private val GoldAccent = Color(0xFFFFD700)
 private val GrayscaleFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
@@ -200,7 +272,7 @@ fun GameDetailAchievementsCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 10.dp),
         ) {
         
             Row(
@@ -295,11 +367,15 @@ fun GameDetailAchievementsCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            TextButton(
-                onClick = { showAllSheet = true },
-                modifier = Modifier.align(Alignment.End),
+            Row(
+                modifier = Modifier
+                    .align(Alignment.End)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { showAllSheet = true }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
                     text = stringResource(R.string.ra_game_details_view_all, data.totalCount),
@@ -560,7 +636,9 @@ fun AchievementDetailDialog(
                         stringResource(R.string.ra_rarity_format, r)
                     }
                 }
-                val hasFooterMeta = achievement.isUnlocked || rarityText != null
+                val hasFooterMeta = achievement.isUnlocked ||
+                    rarityText != null ||
+                    (achievement.numAwarded != null && (achievement.numPlayers ?: 0) > 0)
                 if (hasFooterMeta) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Column(
@@ -579,13 +657,175 @@ fun AchievementDetailDialog(
                                 textAlign = TextAlign.Center,
                             )
                         }
-                        if (rarityText != null) {
-                            Text(
-                                text = rarityText,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center,
-                            )
+                        val hasRawCounts = achievement.numAwarded != null &&
+                            achievement.numPlayers != null &&
+                            achievement.numPlayers > 0
+                        val effectiveRarity = achievement.rarity ?: if (hasRawCounts) {
+                            (achievement.numAwarded!!.toDouble() * 100.0) / achievement.numPlayers!!.toDouble()
+                        } else null
+                        val effectiveRarityHardcore = achievement.rarityHardcore ?: if (hasRawCounts && achievement.numAwardedHardcore != null) {
+                            (achievement.numAwardedHardcore.toDouble() * 100.0) / achievement.numPlayers!!.toDouble()
+                        } else null
+
+                        if (effectiveRarity != null || hasRawCounts) {
+                            val totalFraction = ((effectiveRarity ?: 0.0) / 100.0).toFloat().coerceIn(0f, 1f)
+                            val hardcoreFraction = ((effectiveRarityHardcore ?: 0.0) / 100.0)
+                                .toFloat()
+                                .coerceIn(0f, totalFraction)
+                            var selectedHint by remember(achievement.id) { mutableStateOf<BarSegmentHint?>(null) }
+                            var barWidthPx by remember { mutableStateOf(0) }
+                            val fmt = remember { NumberFormat.getIntegerInstance() }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.86f)
+                                    .height(20.dp)
+                                    .onSizeChanged { barWidthPx = it.width }
+                                    .pointerInput(totalFraction, hardcoreFraction) {
+                                        detectTapGestures { offset ->
+                                            val width = barWidthPx.takeIf { it > 0 } ?: return@detectTapGestures
+                                            val tapFraction = (offset.x / width).coerceIn(0f, 1f)
+                                            val segment = when {
+                                                hardcoreFraction > 0f && tapFraction <= hardcoreFraction -> BarSegmentHint.HARDCORE
+                                                totalFraction > hardcoreFraction && tapFraction <= totalFraction -> BarSegmentHint.SOFTCORE
+                                                else -> BarSegmentHint.LOCKED
+                                            }
+                                            selectedHint = if (selectedHint == segment) null else segment
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)),
+                                ) {
+                                    if (totalFraction > 0f) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .fillMaxWidth(totalFraction)
+                                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)),
+                                        )
+                                    }
+                                    if (hardcoreFraction > 0f) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxHeight()
+                                                .fillMaxWidth(hardcoreFraction)
+                                                .background(GoldAccent),
+                                        )
+                                    }
+                                }
+                            }
+
+                            AnimatedVisibility(visible = selectedHint != null) {
+                                val activeHint = selectedHint
+                                if (activeHint != null) {
+                                    val hardcorePct = (effectiveRarityHardcore ?: 0.0).coerceIn(0.0, 100.0)
+                                    val totalPct = (effectiveRarity ?: 0.0).coerceIn(0.0, 100.0)
+                                    val softcorePct = (totalPct - hardcorePct).coerceAtLeast(0.0)
+                                    val lockedPct = (100.0 - totalPct).coerceAtLeast(0.0)
+
+                                    val (dotColor, hintText) = when (activeHint) {
+                                        BarSegmentHint.HARDCORE -> GoldAccent to if (hasRawCounts && achievement.numAwardedHardcore != null) {
+                                            stringResource(
+                                                R.string.ra_bar_hint_hardcore_counts,
+                                                fmt.format(achievement.numAwardedHardcore),
+                                                hardcorePct,
+                                            )
+                                        } else {
+                                            stringResource(R.string.ra_bar_hint_hardcore_pct, hardcorePct)
+                                        }
+                                        BarSegmentHint.SOFTCORE -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f) to if (hasRawCounts) {
+                                            val softcoreCount = (achievement.numAwarded!! - (achievement.numAwardedHardcore ?: 0)).coerceAtLeast(0)
+                                            stringResource(
+                                                R.string.ra_bar_hint_softcore_counts,
+                                                fmt.format(softcoreCount),
+                                                softcorePct,
+                                            )
+                                        } else {
+                                            stringResource(R.string.ra_bar_hint_softcore_pct, softcorePct)
+                                        }
+                                        BarSegmentHint.LOCKED -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f) to if (hasRawCounts) {
+                                            val lockedCount = (achievement.numPlayers!! - achievement.numAwarded!!).coerceAtLeast(0)
+                                            stringResource(
+                                                R.string.ra_bar_hint_locked_counts,
+                                                fmt.format(lockedCount),
+                                                lockedPct,
+                                            )
+                                        } else {
+                                            stringResource(R.string.ra_bar_hint_locked_pct, lockedPct)
+                                        }
+                                    }
+
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, dotColor.copy(alpha = 0.45f)),
+                                        modifier = Modifier.padding(bottom = 2.dp),
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(dotColor),
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = hintText,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (hasRawCounts) {
+                                val totalAwardedStr = fmt.format(achievement.numAwarded!!)
+                                val totalPlayersStr = fmt.format(achievement.numPlayers!!)
+                                val playersLine = if (achievement.numAwardedHardcore != null) {
+                                    stringResource(
+                                        R.string.ra_stats_players_hardcore,
+                                        totalAwardedStr,
+                                        fmt.format(achievement.numAwardedHardcore),
+                                        totalPlayersStr,
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.ra_stats_players_total,
+                                        totalAwardedStr,
+                                        totalPlayersStr,
+                                    )
+                                }
+                                Text(
+                                    text = playersLine,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Text(
+                                    text = stringResource(R.string.ra_stats_unlock_rate, effectiveRarity ?: 0.0),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                            } else if (rarityText != null) {
+                                Text(
+                                    text = rarityText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
                         }
                     }
                 }
@@ -637,14 +877,21 @@ fun AchievementsListBottomSheet(
 ) {
     val sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val scope = rememberCoroutineScope()
+    val listState = rememberLazyListState()
     var filterMode by remember { mutableStateOf(0) }
+    var sortOrder by remember { mutableStateOf(AchievementSortOrder.UNLOCKED_FIRST) }
 
-    val filteredList = remember(data.achievements, filterMode) {
-        when (filterMode) {
+    val filteredList = remember(data.achievements, filterMode, sortOrder) {
+        val base = when (filterMode) {
             1 -> data.achievements.filter { it.isUnlocked }
             2 -> data.achievements.filter { !it.isUnlocked }
             else -> data.achievements
         }
+        sortAchievements(base, sortOrder)
+    }
+
+    LaunchedEffect(filterMode, sortOrder) {
+        listState.scrollToItem(0)
     }
 
     ModalBottomSheet(
@@ -704,30 +951,60 @@ fun AchievementsListBottomSheet(
             }
 
 
-            Row(
+            LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                FilterChip(
-                    selected = filterMode == 0,
-                    onClick = { filterMode = 0 },
-                    label = { Text(stringResource(R.string.ra_game_details_filter_all, data.totalCount)) },
-                )
-                FilterChip(
-                    selected = filterMode == 1,
-                    onClick = { filterMode = 1 },
-                    label = { Text(stringResource(R.string.ra_game_details_filter_unlocked, data.unlockedCount)) },
-                )
-                FilterChip(
-                    selected = filterMode == 2,
-                    onClick = { filterMode = 2 },
-                    label = { Text(stringResource(R.string.ra_game_details_filter_locked, data.totalCount - data.unlockedCount)) },
-                )
+                item(key = "filter_all") {
+                    FilterChip(
+                        selected = filterMode == 0,
+                        onClick = { filterMode = 0 },
+                        label = { Text(stringResource(R.string.ra_game_details_filter_all, data.totalCount)) },
+                    )
+                }
+                item(key = "filter_unlocked") {
+                    FilterChip(
+                        selected = filterMode == 1,
+                        onClick = { filterMode = 1 },
+                        label = { Text(stringResource(R.string.ra_game_details_filter_unlocked, data.unlockedCount)) },
+                    )
+                }
+                item(key = "filter_locked") {
+                    FilterChip(
+                        selected = filterMode == 2,
+                        onClick = { filterMode = 2 },
+                        label = { Text(stringResource(R.string.ra_game_details_filter_locked, data.totalCount - data.unlockedCount)) },
+                    )
+                }
+                item(key = "sort_divider") {
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(20.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant),
+                    )
+                }
+                items(AchievementSortOrder.entries, key = { it.name }) { order ->
+                    FilterChip(
+                        selected = sortOrder == order,
+                        onClick = { sortOrder = order },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = order.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        },
+                        label = { Text(stringResource(order.labelResId)) },
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),

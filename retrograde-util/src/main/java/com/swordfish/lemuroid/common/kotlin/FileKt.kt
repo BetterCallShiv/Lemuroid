@@ -19,6 +19,8 @@
 
 package com.swordfish.lemuroid.common.kotlin
 
+import android.content.Context
+import android.net.Uri
 import android.util.AtomicFile
 import androidx.documentfile.provider.DocumentFile
 import java.io.ByteArrayInputStream
@@ -59,23 +61,46 @@ private val NON_ROM_DOC_FILENAMES =
         "readme.md", "changelog.md", "license.md", "credits.md", "notes.md"
     )
 
+
+fun Context.openUriInputStream(uri: Uri): InputStream? {
+    if (uri.scheme == null || uri.scheme.equals("file", ignoreCase = true)) {
+        val directPath = uri.path ?: uri.toString().takeIf { it.startsWith("/") }
+        val file = directPath?.let { File(it) }
+        if (file != null && file.exists() && file.isFile) {
+            return file.inputStream()
+        }
+    }
+    return contentResolver.openInputStream(uri)
+}
+
 fun InputStream.calculateRomCrc32(
-    fileName: String,
+    @Suppress("UNUSED_PARAMETER") fileName: String,
     isArcadeZip: Boolean = false,
-    isZipArchive: Boolean = false,
+    @Suppress("UNUSED_PARAMETER") isZipArchive: Boolean = false,
     targetEntryName: String? = null,
 ): String {
-    val isZipped = isZipArchive || fileName.endsWith(".zip", ignoreCase = true)
-    if (isArcadeZip || !isZipped) {
-        return calculateCrc32().uppercase()
-    }
-
     return this.use { rawStream ->
+        val pushback = PushbackInputStream(rawStream, 4)
+        val header = ByteArray(4)
+        val headerLen = pushback.read(header)
+        if (headerLen > 0) {
+            pushback.unread(header, 0, headerLen)
+        }
+        val hasZipMagic = headerLen == 4 &&
+            header[0] == 0x50.toByte() &&
+            header[1] == 0x4B.toByte() &&
+            header[2] == 0x03.toByte() &&
+            header[3] == 0x04.toByte()
+
+        if (isArcadeZip || !hasZipMagic) {
+            return pushback.calculateCrc32().uppercase()
+        }
+
         val buffer = ByteArray(CRC32_BYTE_ARRAY_SIZE)
         var bestCrc: String? = null
         var bestSize = -1L
 
-        ZipInputStream(rawStream).use { zipStream ->
+        ZipInputStream(pushback).use { zipStream ->
             var entry = zipStream.nextEntry
             while (entry != null) {
                 val entryName = entry.name
@@ -104,7 +129,8 @@ fun InputStream.calculateRomCrc32(
                         }
 
                         if (matchesTarget) {
-                            return@use crc.value.toStringCRC32().uppercase()
+                            bestCrc = crc.value.toStringCRC32().uppercase()
+                            break
                         }
 
                         if (entryBytes > bestSize) {
