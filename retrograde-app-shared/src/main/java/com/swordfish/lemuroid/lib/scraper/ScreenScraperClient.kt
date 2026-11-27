@@ -311,19 +311,52 @@ class ScreenScraperClient(
             }
         }
 
+        private fun resolveDirectMediaEndpoint(mediaParam: String?): String {
+            val lower = mediaParam.orEmpty().lowercase(Locale.ROOT)
+            return when {
+                lower.startsWith("manuel") -> "mediaManuelJeu.php"
+                lower.startsWith("video") -> "mediaVideoJeu.php"
+                else -> "mediaJeu.php"
+            }
+        }
+
         fun attachCredentialsIfNeeded(
             url: HttpUrl,
             context: Context? = null,
             userId: String? = null,
             userPass: String? = null,
         ): HttpUrl {
-            if (!url.host.contains("screenscraper.fr", ignoreCase = true) ||
-                !url.encodedPath.contains("mediaJeu.php", ignoreCase = true)
-            ) {
-                return url
+            val isLegacyProxyMedia = url.host.contains("alphalemuroid.", ignoreCase = true) &&
+                url.encodedPath.startsWith("/screenscraper/media", ignoreCase = true)
+
+            val targetUrl = if (isLegacyProxyMedia) {
+                val systemEid = url.queryParameter("systemeid")
+                val jeuId = url.queryParameter("jeuid")
+                val media = url.queryParameter("media")
+                if (!systemEid.isNullOrBlank() && !jeuId.isNullOrBlank() && !media.isNullOrBlank()) {
+                    val endpoint = resolveDirectMediaEndpoint(media)
+                    "https://neoclone.screenscraper.fr/api2/$endpoint".toHttpUrlOrNull()!!
+                        .newBuilder()
+                        .addQueryParameter("systemeid", systemEid)
+                        .addQueryParameter("jeuid", jeuId)
+                        .addQueryParameter("media", media)
+                        .build()
+                } else {
+                    return url
+                }
+            } else {
+                url
             }
-            val hasDevId = !url.queryParameter("devid").isNullOrBlank() &&
-                !url.queryParameter("devpassword").isNullOrBlank()
+
+            if (!targetUrl.host.contains("screenscraper.fr", ignoreCase = true) ||
+                !targetUrl.encodedPath.contains("/api2/", ignoreCase = true) ||
+                !targetUrl.encodedPath.endsWith(".php", ignoreCase = true)
+            ) {
+                return targetUrl
+            }
+
+            val hasDevId = !targetUrl.queryParameter("devid").isNullOrBlank() &&
+                !targetUrl.queryParameter("devpassword").isNullOrBlank()
             val creds = if (hasDevId) null else getDevCredsBlocking(context)
             val appPrefs = context?.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
             val effectiveUser = userId?.trim()?.takeIf { it.isNotEmpty() }
@@ -331,11 +364,11 @@ class ScreenScraperClient(
             val effectivePass = userPass?.trim()?.takeIf { it.isNotEmpty() }
                 ?: appPrefs?.getString("screenscraper_password", "")?.trim()?.takeIf { it.isNotEmpty() }
 
-            val builder = url.newBuilder()
+            val builder = targetUrl.newBuilder()
             if (creds != null) {
                 builder.setQueryParameter("devid", creds.devId)
                 builder.setQueryParameter("devpassword", creds.devPassword)
-                if (url.queryParameter("softname").isNullOrBlank()) {
+                if (targetUrl.queryParameter("softname").isNullOrBlank()) {
                     builder.setQueryParameter("softname", creds.softName)
                 }
             }

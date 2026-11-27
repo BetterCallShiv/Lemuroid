@@ -29,7 +29,7 @@ class MediaStorageManager(
                 .header("User-Agent", "AlphaLemuroid")
                 .build()
             val response = chain.proceed(request)
-            if (original.url.host.contains("screenscraper.fr", ignoreCase = true) && response.isSuccessful) {
+            if (authorizedUrl.host.contains("screenscraper.fr", ignoreCase = true) && response.isSuccessful) {
                 val contentType = response.header("Content-Type")
                 if (contentType != null && contentType.contains("text/html", ignoreCase = true)) {
                     response.close()
@@ -57,6 +57,7 @@ class MediaStorageManager(
             .url(url)
             .header("User-Agent", "AlphaLemuroid")
             .build()
+        var refreshedCreds = false
         for (attempt in 0..2) {
             var retryDelayMs: Long? = null
             try {
@@ -64,12 +65,17 @@ class MediaStorageManager(
                     if (response.isSuccessful) {
                         return response.body?.bytes()
                     }
-                    if (response.code !in setOf(429, 430, 503) || attempt == 2) {
+                    if (response.code == 403 && !refreshedCreds) {
+                        refreshedCreds = true
+                        ScreenScraperClient.invalidateCachedDevCreds(context)
+                        retryDelayMs = 150L
+                    } else if (response.code !in setOf(429, 430, 503) || attempt == 2) {
                         return null
+                    } else {
+                        val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
+                        retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 4000L)
+                            ?: (400L * (attempt + 1) + Random.nextLong(50L, 250L))
                     }
-                    val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
-                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 4000L)
-                        ?: (400L * (attempt + 1) + Random.nextLong(50L, 250L))
                 }
             } catch (e: CancellationException) {
                 throw e

@@ -139,7 +139,8 @@ class GameViewModelSaves(
     private suspend fun takeScreenshotPreview(index: Int) {
         val sizeInDp = StatesPreviewManager.PREVIEW_SIZE_DP
         val previewSize = GraphicsUtils.convertDpToPixel(sizeInDp, appContext).roundToInt()
-        val preview = retroGameView.retroGameView?.takeScreenshot(previewSize, 3)
+        val gameView = retroGameView.retroGameView ?: return
+        val preview = gameView.takeScreenshot(previewSize, 3, cropViewport = gameView.viewport)
         if (preview != null) {
             statesPreviewManager.setPreviewForSlot(game, preview, systemCoreConfig.coreID, index)
         }
