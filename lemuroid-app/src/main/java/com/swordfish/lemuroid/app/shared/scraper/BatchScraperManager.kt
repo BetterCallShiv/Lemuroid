@@ -681,9 +681,14 @@ class BatchScraperManager(
                     bannerUrl = finalBannerUri,
                     logoUrl = finalLogoUri,
                     boxArtFrontUrl = finalBoxArtUri ?: existingBoxArt ?: game.coverFrontUrl,
-                    boxArtBackUrl = finalBackBoxArtUri ?: existingBackBoxArt,
+                    boxArtBackUrl = finalBackBoxArtUri ?: existingBackBoxArt ?: screenScraperData?.boxArtBackUrl,
                     screenshotUrlsJson = screenScraperClient.serializeScreenshots(mergedScreenshotUris),
                     videoUrl = finalVideoUri,
+                    families = screenScraperData?.families ?: existingDetails?.families,
+                    manualUrlsJson = screenScraperData?.manualEntries
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { screenScraperClient.serializeManuals(it) }
+                        ?: existingDetails?.manualUrlsJson,
                     crc32 = normalizedCrc,
                     scraperSource = effectiveSource,
                     lastScrapedAt = System.currentTimeMillis(),

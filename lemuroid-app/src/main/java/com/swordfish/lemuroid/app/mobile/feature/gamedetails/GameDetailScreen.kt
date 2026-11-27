@@ -2,11 +2,13 @@ package com.swordfish.lemuroid.app.mobile.feature.gamedetails
 
 import android.media.MediaPlayer
 import android.net.Uri
+import android.widget.Toast
 import android.widget.VideoView
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,6 +45,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Bookmarks
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.VideogameAsset
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
@@ -60,6 +64,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +76,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -94,6 +101,7 @@ import java.util.Locale
 
 sealed interface DetailChipFilter {
     data class Genre(val genre: String) : DetailChipFilter
+    data class Family(val family: String) : DetailChipFilter
     data class Year(val year: String) : DetailChipFilter
     data class Rating(val rating: Float, val formattedRating: String) : DetailChipFilter
 }
@@ -150,9 +158,22 @@ fun GameDetailScreen(
     }
 
     val details = gameWithDetails.details
+    val manualState = state.manualState
     var previewLightbox by remember { mutableStateOf<Pair<List<String>, Int>?>(null) }
     var synopsisExpanded by remember { mutableStateOf(false) }
     var failedUrls by remember(state.screenshotUrls) { mutableStateOf(setOf<String>()) }
+    var showManualLanguagePicker by remember { mutableStateOf(false) }
+
+    LaunchedEffect(manualState.error) {
+        if (manualState.error != null) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.game_details_manual_error),
+                Toast.LENGTH_SHORT,
+            ).show()
+            viewModel.clearManualError()
+        }
+    }
 
     Box(
         modifier = modifier.fillMaxSize(),
@@ -227,136 +248,242 @@ fun GameDetailScreen(
                 }
             }
 
-            Row(
+            val frontCoverUrl = details?.boxArtFrontUrl ?: game.coverFrontUrl
+            val backCoverUrl = details?.boxArtBackUrl?.takeIf { it.isNotBlank() }
+            val coverImages = listOfNotNull(frontCoverUrl?.takeIf { it.isNotBlank() }, backCoverUrl)
+            val developer = details?.publisher ?: game.developer
+            val genresList = details?.genres
+                ?.split(Regex("[,|/•]"))
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?.distinctBy { it.lowercase(Locale.ROOT) }
+                ?: emptyList()
+            val familiesList = details?.families
+                ?.split(Regex("[,|/•]"))
+                ?.map { it.trim() }
+                ?.filter { it.isNotBlank() }
+                ?.distinctBy { it.lowercase(Locale.ROOT) }
+                ?: emptyList()
+
+            val infoChips = buildList {
+                add(
+                    HeaderTagChip(
+                        text = game.systemId.uppercase(Locale.ROOT),
+                        onClick = onSystemClick?.let { handler -> { handler(game) } },
+                    ),
+                )
+                details?.releaseDate?.take(4)?.takeIf { it.all(Char::isDigit) }?.let { year ->
+                    add(
+                        HeaderTagChip(
+                            text = year,
+                            onClick = onChipFilterSelected?.let {
+                                { pendingChipFilter = DetailChipFilter.Year(year) }
+                            },
+                        ),
+                    )
+                }
+                details?.rating?.takeIf { it > 0f }?.let { rating ->
+                    val count = details.ratingCount?.takeIf { it > 0 }
+                    val shortRating = String.format(Locale.US, "%.1f", rating)
+                    val ratingText = if (count != null) {
+                        String.format(Locale.US, "%.1f (%,d)", rating, count)
+                    } else {
+                        shortRating
+                    }
+                    add(
+                        HeaderTagChip(
+                            text = ratingText,
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = stringResource(R.string.content_desc_rating),
+                                    tint = Color(0xFFFFB300),
+                                    modifier = Modifier.size(15.dp),
+                                )
+                            },
+                            onClick = onChipFilterSelected?.let {
+                                { pendingChipFilter = DetailChipFilter.Rating(rating, shortRating) }
+                            },
+                        ),
+                    )
+                }
+            }
+            val familyChips = familiesList.map { family ->
+                HeaderTagChip(
+                    text = family,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Outlined.Bookmarks,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    },
+                    onClick = onChipFilterSelected?.let {
+                        { pendingChipFilter = DetailChipFilter.Family(family) }
+                    },
+                )
+            }
+            val genreChips = genresList.map { genre ->
+                HeaderTagChip(
+                    text = genre,
+                    onClick = onChipFilterSelected?.let {
+                        { pendingChipFilter = DetailChipFilter.Genre(genre) }
+                    },
+                )
+            }
+            val allChips = infoChips + familyChips + genreChips
+
+            SubcomposeLayout(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.Top,
-            ) {
-            
-                Card(
-                    modifier = Modifier
-                        .width(110.dp)
-                        .aspectRatio(0.72f),
-                    shape = RoundedCornerShape(12.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
-                ) {
-                    val coverUrl = details?.boxArtFrontUrl ?: game.coverFrontUrl
-                    if (!coverUrl.isNullOrBlank()) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(coverUrl)
-                                .crossfade(true)
-                                .build(),
-                            contentDescription = game.title,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop,
+            ) { constraints ->
+                val gapPx = 14.dp.roundToPx()
+                val textTagGapPx = 6.dp.roundToPx()
+                val topOffsetPx = 2.dp.roundToPx()
+
+                val coverPlaceable = subcompose("cover") {
+                    Card(
+                        modifier = Modifier
+                            .width(110.dp)
+                            .aspectRatio(0.72f)
+                            .clickable(enabled = coverImages.isNotEmpty()) {
+                                if (backCoverUrl != null) {
+                                    viewModel.cacheBackBoxArtIfNeeded()
+                                }
+                                previewLightbox = coverImages to 0
+                            },
+                        shape = RoundedCornerShape(12.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                    ) {
+                        if (!frontCoverUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(frontCoverUrl)
+                                    .crossfade(true)
+                                    .build(),
+                                contentDescription = stringResource(R.string.content_desc_boxart_front),
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Crop,
+                            )
+                        } else {
+                            LemuroidGameImage(
+                                modifier = Modifier.fillMaxSize(),
+                                game = game,
+                            )
+                        }
+                    }
+                }.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+
+                val rightWidth = (constraints.maxWidth - coverPlaceable.width - gapPx).coerceAtLeast(1)
+                val rightConstraints = Constraints(maxWidth = rightWidth, maxHeight = Constraints.Infinity)
+
+                val headerTextPlaceable = subcompose("header_text") {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = game.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
                         )
+                        if (!developer.isNullOrBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = developer,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }.first().measure(rightConstraints)
+
+                val availableTagHeight = (coverPlaceable.height - topOffsetPx - headerTextPlaceable.height - textTagGapPx)
+                    .coerceAtLeast(0)
+
+                val fullWrapPlaceable = subcompose("tags_full_wrap") {
+                    HeaderTagFlowRow(chips = allChips)
+                }.first().measure(rightConstraints)
+
+                val tagsPlaceable = if (fullWrapPlaceable.height <= availableTagHeight) {
+                    fullWrapPlaceable
+                } else if (familyChips.isNotEmpty() && genreChips.isNotEmpty()) {
+                    val splitPlaceable = subcompose("tags_split") {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            HeaderTagFlowRow(chips = infoChips)
+                            HeaderTagScrollRow(chips = familyChips)
+                            HeaderTagScrollRow(chips = genreChips)
+                        }
+                    }.first().measure(rightConstraints)
+
+                    if (splitPlaceable.height <= availableTagHeight) {
+                        splitPlaceable
                     } else {
-                        LemuroidGameImage(
-                            modifier = Modifier.fillMaxSize(),
-                            game = game,
-                        )
+                        val twoRowPlaceable = subcompose("tags_two_row") {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                HeaderTagScrollRow(chips = infoChips)
+                                HeaderTagScrollRow(chips = familyChips + genreChips)
+                            }
+                        }.first().measure(rightConstraints)
+
+                        if (twoRowPlaceable.height <= availableTagHeight) {
+                            twoRowPlaceable
+                        } else {
+                            subcompose("tags_single_row") {
+                                HeaderTagScrollRow(chips = allChips)
+                            }.first().measure(rightConstraints)
+                        }
+                    }
+                } else {
+                    val secondaryChips = familyChips + genreChips
+                    if (secondaryChips.isNotEmpty()) {
+                        val twoRowPlaceable = subcompose("tags_two_row_single_cat") {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                HeaderTagFlowRow(chips = infoChips)
+                                HeaderTagScrollRow(chips = secondaryChips)
+                            }
+                        }.first().measure(rightConstraints)
+
+                        if (twoRowPlaceable.height <= availableTagHeight) {
+                            twoRowPlaceable
+                        } else {
+                            subcompose("tags_single_row_single_cat") {
+                                HeaderTagScrollRow(chips = allChips)
+                            }.first().measure(rightConstraints)
+                        }
+                    } else {
+                        subcompose("tags_single_row_info") {
+                            HeaderTagScrollRow(chips = allChips)
+                        }.first().measure(rightConstraints)
                     }
                 }
 
-                Spacer(modifier = Modifier.width(14.dp))
+                val rightTotalHeight = topOffsetPx + headerTextPlaceable.height + textTagGapPx + tagsPlaceable.height
+                val layoutHeight = maxOf(coverPlaceable.height, rightTotalHeight)
+                val rightX = coverPlaceable.width + gapPx
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp),
-                ) {
-                    Text(
-                        text = game.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    val developer = details?.publisher ?: game.developer
-                    if (!developer.isNullOrBlank()) {
-                        Text(
-                            text = developer,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    val genresList = details?.genres
-                        ?.split(Regex("[,|/•]"))
-                        ?.map { it.trim() }
-                        ?.filter { it.isNotBlank() }
-                        ?.distinctBy { it.lowercase(Locale.ROOT) }
-                        ?: emptyList()
-
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        item(key = "tag_system") {
-                            GameDetailTag(
-                                text = game.systemId.uppercase(Locale.ROOT),
-                                onClick = onSystemClick?.let { handler -> { handler(game) } },
-                            )
-                        }
-
-                        details?.releaseDate?.take(4)?.takeIf { it.all(Char::isDigit) }?.let { year ->
-                            item(key = "tag_year") {
-                                GameDetailTag(
-                                    text = year,
-                                    onClick = onChipFilterSelected?.let {
-                                        { pendingChipFilter = DetailChipFilter.Year(year) }
-                                    },
-                                )
-                            }
-                        }
-
-                        details?.rating?.takeIf { it > 0f }?.let { rating ->
-                            val count = details.ratingCount?.takeIf { it > 0 }
-                            val shortRating = String.format(Locale.US, "%.1f", rating)
-                            val ratingText = if (count != null) {
-                                String.format(Locale.US, "%.1f (%,d)", rating, count)
-                            } else {
-                                shortRating
-                            }
-                            item(key = "tag_rating") {
-                                GameDetailTag(
-                                    text = ratingText,
-                                    icon = {
-                                        Icon(
-                                            imageVector = Icons.Filled.Star,
-                                            contentDescription = stringResource(R.string.content_desc_rating),
-                                            tint = Color(0xFFFFB300),
-                                            modifier = Modifier.size(15.dp),
-                                        )
-                                    },
-                                    onClick = onChipFilterSelected?.let {
-                                        { pendingChipFilter = DetailChipFilter.Rating(rating, shortRating) }
-                                    },
-                                )
-                            }
-                        }
-
-                        items(genresList.size, key = { index -> "${genresList[index]}_$index" }) { index ->
-                            val genre = genresList[index]
-                            GameDetailTag(
-                                text = genre,
-                                onClick = onChipFilterSelected?.let {
-                                    { pendingChipFilter = DetailChipFilter.Genre(genre) }
-                                },
-                            )
-                        }
-                    }
+                layout(constraints.maxWidth, layoutHeight) {
+                    coverPlaceable.placeRelative(0, 0)
+                    headerTextPlaceable.placeRelative(rightX, topOffsetPx)
+                    tagsPlaceable.placeRelative(rightX, topOffsetPx + headerTextPlaceable.height + textTagGapPx)
+                }
+            }
 
                     val activePendingFilter = pendingChipFilter
                     if (activePendingFilter != null && onChipFilterSelected != null) {
                         val filterLabel = when (activePendingFilter) {
                             is DetailChipFilter.Genre -> activePendingFilter.genre
+                            is DetailChipFilter.Family -> activePendingFilter.family
                             is DetailChipFilter.Year -> activePendingFilter.year
                             is DetailChipFilter.Rating -> "★ ${activePendingFilter.formattedRating}"
                         }
@@ -388,7 +515,7 @@ fun GameDetailScreen(
                                         style = MaterialTheme.typography.headlineSmall,
                                         color = AlertDialogDefaults.titleContentColor,
                                     )
-                                    Spacer(modifier = Modifier.height(14.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
                                     Column(
                                         verticalArrangement = Arrangement.spacedBy(10.dp),
                                         modifier = Modifier.fillMaxWidth(),
@@ -435,60 +562,127 @@ fun GameDetailScreen(
                             }
                         }
                     }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            val showManualButton = manualState.manualsEnabled && manualState.availableManuals.isNotEmpty()
+            val cheatsText = if (state.cheatCount > 0) {
+                "${stringResource(R.string.game_menu_cheats)} (${state.cheatCount})"
+            } else {
+                stringResource(R.string.game_menu_cheats)
+            }
+            val onManualClick: () -> Unit = {
+                val resolved = resolvePreferredManualEntry(
+                    entries = manualState.availableManuals,
+                    preferredLanguage = manualState.preferredLanguage,
+                )
+                if (resolved != null) {
+                    viewModel.openManual(resolved)
+                } else if (manualState.availableManuals.size == 1) {
+                    viewModel.openManual(manualState.availableManuals.first())
+                } else {
+                    showManualLanguagePicker = true
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Button(
-                    onClick = { onPlayGame(game) },
+            if (showManualButton) {
+                Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = null,
-                        modifier = Modifier.size(22.dp),
+                    PrimaryPlayButton(
+                        onClick = { onPlayGame(game) },
+                        modifier = Modifier.fillMaxWidth(),
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.game_details_play),
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                }
 
-                OutlinedButton(
-                    onClick = { onOpenCheats(game) },
-                    modifier = Modifier.height(48.dp),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.VideogameAsset,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    val cheatsText = if (state.cheatCount > 0) {
-                        "${stringResource(R.string.game_menu_cheats)} (${state.cheatCount})"
-                    } else {
-                        stringResource(R.string.game_menu_cheats)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = { onOpenCheats(game) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.VideogameAsset,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = cheatsText,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onManualClick,
+                            enabled = !manualState.isLoading,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(46.dp),
+                            shape = RoundedCornerShape(12.dp),
+                        ) {
+                            if (manualState.isLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Outlined.MenuBook,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (manualState.isLoading) {
+                                    stringResource(R.string.game_details_manual_loading)
+                                } else {
+                                    stringResource(R.string.game_details_manual)
+                                },
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                    Text(
-                        text = cheatsText,
-                        fontWeight = FontWeight.SemiBold,
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    PrimaryPlayButton(
+                        onClick = { onPlayGame(game) },
+                        modifier = Modifier.weight(1f),
                     )
+
+                    OutlinedButton(
+                        onClick = { onOpenCheats(game) },
+                        modifier = Modifier.height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.VideogameAsset,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = cheatsText,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
 
@@ -894,6 +1088,27 @@ fun GameDetailScreen(
             }
         }
 
+        if (showManualLanguagePicker && manualState.availableManuals.isNotEmpty()) {
+            ManualLanguagePickerDialog(
+                entries = manualState.availableManuals,
+                onSelect = { entry ->
+                    showManualLanguagePicker = false
+                    viewModel.openManual(entry)
+                },
+                onDismiss = { showManualLanguagePicker = false },
+            )
+        }
+
+        manualState.activeManual?.let { (manualFile, activeEntry) ->
+            ManualPdfViewerDialog(
+                file = manualFile,
+                currentEntry = activeEntry,
+                availableManuals = manualState.availableManuals,
+                onSwitchManual = { entry -> viewModel.openManual(entry) },
+                onDismiss = { viewModel.closeManual() },
+            )
+        }
+
     }
 }
 
@@ -1128,6 +1343,40 @@ private fun DetailInfoRow(
     }
 }
 
+private data class HeaderTagChip(
+    val text: String,
+    val icon: (@Composable () -> Unit)? = null,
+    val onClick: (() -> Unit)? = null,
+)
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HeaderTagFlowRow(chips: List<HeaderTagChip>) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        chips.forEach { chip ->
+            GameDetailTag(text = chip.text, icon = chip.icon, onClick = chip.onClick)
+        }
+    }
+}
+
+@Composable
+private fun HeaderTagScrollRow(chips: List<HeaderTagChip>) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        chips.forEach { chip ->
+            GameDetailTag(text = chip.text, icon = chip.icon, onClick = chip.onClick)
+        }
+    }
+}
+
 @Composable
 private fun GameDetailTag(
     text: String,
@@ -1154,5 +1403,33 @@ private fun GameDetailTag(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun PrimaryPlayButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.PlayArrow,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.game_details_play),
+            fontWeight = FontWeight.Bold,
+            style = MaterialTheme.typography.titleMedium,
+        )
     }
 }

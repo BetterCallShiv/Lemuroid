@@ -102,31 +102,8 @@ class ScreenScraperClient {
             if (it > 5.0f) it / 4.0f else it
         } ?: -1.0f
 
-        val genresArray = jeu.optJSONArray("genres")
-        val genresList = mutableListOf<String>()
-        if (genresArray != null) {
-            for (i in 0 until genresArray.length()) {
-                val gObj = genresArray.optJSONObject(i) ?: continue
-                val noms = gObj.optJSONArray("noms")
-                var genreText: String? = null
-                if (noms != null) {
-                    for (j in 0 until noms.length()) {
-                        val nObj = noms.optJSONObject(j) ?: continue
-                        if (nObj.optString("langue").lowercase(Locale.ROOT) == "en") {
-                            genreText = nObj.optString("text").takeIf { it.isNotBlank() }
-                            if (genreText != null) break
-                        }
-                    }
-                }
-                if (genreText == null) {
-                    genreText = gObj.optString("nom").takeIf { it.isNotBlank() }
-                }
-                if (!genreText.isNullOrBlank()) {
-                    genresList.add(genreText)
-                }
-            }
-        }
-        val genres = genresList.distinct().joinToString(", ").takeIf { it.isNotBlank() }
+        val genres = extractLocalizedNames(jeu.optJSONArray("genres"), listOf("en"))
+        val families = extractLocalizedNames(jeu.optJSONArray("familles"), listOf("en", "fr"))
 
         val mediasArray = jeu.optJSONArray("medias")
         val medias = mutableListOf<ScreenScraperMedia>()
@@ -207,10 +184,13 @@ class ScreenScraperClient {
 
         val screenshotUrls = fromMedias.distinct().take(25)
 
+        val manualEntries = extractManualEntries(medias)
+
         return ScrapedGameData(
             title = title,
             synopsis = synopsis,
             genres = genres,
+            families = families,
             publisher = publisher,
             developer = developer,
             releaseDate = releaseDate,
@@ -222,8 +202,112 @@ class ScreenScraperClient {
             boxArtBackUrl = boxArtBackUrl,
             screenshotUrls = screenshotUrls,
             videoUrl = videoUrl,
+            manualEntries = manualEntries,
             scraperSource = "ScreenScraper",
         )
+    }
+
+    private fun extractLocalizedNames(
+        array: JSONArray?,
+        preferredLangs: List<String>,
+    ): String? {
+        if (array == null || array.length() == 0) return null
+        val results = mutableListOf<String>()
+        val seen = mutableSetOf<String>()
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            val noms = obj.optJSONArray("noms")
+            var resolved: String? = null
+            if (noms != null) {
+                for (lang in preferredLangs) {
+                    for (j in 0 until noms.length()) {
+                        val nObj = noms.optJSONObject(j) ?: continue
+                        if (nObj.optString("langue").equals(lang, ignoreCase = true)) {
+                            resolved = nObj.optString("text").takeIf { it.isNotBlank() }
+                            if (resolved != null) break
+                        }
+                    }
+                    if (resolved != null) break
+                }
+                if (resolved == null) {
+                    for (j in 0 until noms.length()) {
+                        resolved = noms.optJSONObject(j)?.optString("text")?.takeIf { it.isNotBlank() }
+                        if (resolved != null) break
+                    }
+                }
+            }
+            if (resolved == null) {
+                resolved = obj.optString("nom").takeIf { it.isNotBlank() }
+                    ?: obj.optString("nomcourt").takeIf { it.isNotBlank() }
+            }
+            val cleaned = resolved?.trim()?.takeIf { it.isNotBlank() } ?: continue
+            if (seen.add(cleaned.lowercase(Locale.ROOT))) {
+                results.add(cleaned)
+            }
+        }
+        return results.joinToString(", ").takeIf { it.isNotBlank() }
+    }
+
+    private fun extractManualEntries(medias: List<ScreenScraperMedia>): List<ScreenScraperManualEntry> {
+        val groupedByUrl = linkedMapOf<String, MutableList<ScreenScraperMedia>>()
+        medias.filter { it.type.equals("manuel", ignoreCase = true) && !it.url.isNullOrBlank() }
+            .forEach { media ->
+                val url = media.url!!.trim()
+                groupedByUrl.getOrPut(url) { mutableListOf() }.add(media)
+            }
+
+        val regionOrder = listOf("us", "eu", "uk", "gb", "wor", "au", "jp", "fr", "de", "sp", "es", "it", "pt", "br", "nl")
+        val seenRegions = mutableSetOf<String>()
+        val deduped = mutableListOf<ScreenScraperManualEntry>()
+
+        for ((url, group) in groupedByUrl) {
+            val matchingUrlRegion = group.firstOrNull { media ->
+                val r = media.region?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() }
+                r != null && url.contains("($r)", ignoreCase = true)
+            }
+            val chosen = matchingUrlRegion ?: group.first()
+            val region = chosen.region?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotBlank() } ?: "wor"
+            if (seenRegions.add(region)) {
+                deduped.add(ScreenScraperManualEntry(region = region, url = url))
+            }
+        }
+
+        return deduped.sortedWith(
+            compareBy(
+                { entry -> regionOrder.indexOf(entry.region).let { if (it >= 0) it else regionOrder.size } },
+                { entry -> entry.region },
+            ),
+        )
+    }
+
+    fun serializeManuals(manuals: List<ScreenScraperManualEntry>): String {
+        val array = JSONArray()
+        manuals.forEach { entry ->
+            array.put(
+                JSONObject().apply {
+                    put("region", entry.region)
+                    put("url", entry.url)
+                },
+            )
+        }
+        return array.toString()
+    }
+
+    fun deserializeManuals(jsonString: String?): List<ScreenScraperManualEntry> {
+        if (jsonString.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(jsonString)
+            val list = mutableListOf<ScreenScraperManualEntry>()
+            for (i in 0 until array.length()) {
+                val obj = array.optJSONObject(i) ?: continue
+                val url = obj.optString("url").trim()
+                val region = obj.optString("region").trim().lowercase(Locale.ROOT).ifBlank { "wor" }
+                if (url.isNotBlank()) {
+                    list.add(ScreenScraperManualEntry(region = region, url = url))
+                }
+            }
+            list
+        }.getOrDefault(emptyList())
     }
 
     fun selectScreenshotUrls(

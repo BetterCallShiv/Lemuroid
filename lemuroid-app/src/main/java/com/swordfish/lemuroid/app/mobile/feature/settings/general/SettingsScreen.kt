@@ -90,6 +90,7 @@ private fun MediaStorageManager.MediaType.labelRes(): Int =
         MediaStorageManager.MediaType.SCREENSHOTS -> R.string.media_type_screenshots
         MediaStorageManager.MediaType.TITLES -> R.string.settings_media_source_sstitle
         MediaStorageManager.MediaType.VIDEOS -> R.string.settings_media_source_video
+        MediaStorageManager.MediaType.MANUALS -> R.string.media_type_manuals
     }
 
 @Composable
@@ -325,6 +326,36 @@ private fun ScraperSettings() {
             entryValues = mediaValues,
             entries = mediaTitles,
             confirmButton = stringResource(android.R.string.ok),
+        )
+
+        val enableGameManuals = booleanPreferenceState(R.string.pref_key_enable_game_manuals, true)
+        LemuroidSettingsSwitch(
+            state = enableGameManuals,
+            title = { Text(text = stringResource(id = R.string.settings_title_game_manuals)) },
+            subtitle = { Text(text = stringResource(id = R.string.settings_description_game_manuals)) },
+        )
+
+        val manualLanguageValues = listOf("ask", "auto_en", "jp", "fr", "de", "sp", "br", "it", "nl")
+        val manualLanguageTitles = listOf(
+            stringResource(id = R.string.settings_manual_lang_ask),
+            stringResource(id = R.string.settings_manual_lang_english),
+            stringResource(id = R.string.settings_manual_lang_japanese),
+            stringResource(id = R.string.settings_manual_lang_french),
+            stringResource(id = R.string.settings_manual_lang_german),
+            stringResource(id = R.string.settings_manual_lang_spanish),
+            stringResource(id = R.string.settings_manual_lang_portuguese),
+            stringResource(id = R.string.settings_manual_lang_italian),
+            stringResource(id = R.string.settings_manual_lang_dutch),
+        )
+        LemuroidSettingsList(
+            enabled = enableGameManuals.value,
+            state = indexPreferenceState(
+                R.string.pref_key_manual_language,
+                "auto_en",
+                manualLanguageValues,
+            ),
+            title = { Text(text = stringResource(id = R.string.settings_title_manual_language)) },
+            items = manualLanguageTitles,
         )
 
         LemuroidSettingsMenuLink(

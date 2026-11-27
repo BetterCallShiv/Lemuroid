@@ -75,6 +75,8 @@ fun GamesScreen(
     searchQuery: String = "",
     selectedGenres: Set<String> = emptySet(),
     onGenresChange: (Set<String>) -> Unit = {},
+    selectedFamily: String? = null,
+    onClearFamily: () -> Unit = {},
     selectedYear: String? = null,
     onClearYear: () -> Unit = {},
     selectedRating: Float? = null,
@@ -92,7 +94,7 @@ fun GamesScreen(
     val games by viewModel.games.collectAsState()
     val availableGenres by viewModel.availableGenres.collectAsState()
 
-    var lastAppliedFilter by remember { mutableStateOf(listOf<Any?>(sortOrder, selectedGenres, searchQuery, selectedYear, selectedRating)) }
+    var lastAppliedFilter by remember { mutableStateOf(listOf<Any?>(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating)) }
     var pendingScrollOldIds by remember { mutableStateOf<List<Int>?>(null) }
 
     LaunchedEffect(searchQuery) {
@@ -100,6 +102,9 @@ fun GamesScreen(
     }
     LaunchedEffect(selectedGenres) {
         viewModel.changeSelectedGenres(selectedGenres)
+    }
+    LaunchedEffect(selectedFamily) {
+        viewModel.changeSelectedFamily(selectedFamily)
     }
     LaunchedEffect(selectedYear) {
         viewModel.changeSelectedYear(selectedYear)
@@ -111,8 +116,8 @@ fun GamesScreen(
         viewModel.changeSortOrder(sortOrder)
     }
 
-    LaunchedEffect(sortOrder, selectedGenres, searchQuery, selectedYear, selectedRating) {
-        val current = listOf<Any?>(sortOrder, selectedGenres, searchQuery, selectedYear, selectedRating)
+    LaunchedEffect(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating) {
+        val current = listOf<Any?>(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating)
         if (current != lastAppliedFilter) {
             lastAppliedFilter = current
             pendingScrollOldIds = games.map { it.game.id }
@@ -135,12 +140,28 @@ fun GamesScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (availableGenres.isNotEmpty() || selectedYear != null || selectedRating != null) {
+        if (availableGenres.isNotEmpty() || selectedFamily != null || selectedYear != null || selectedRating != null) {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (selectedFamily != null) {
+                    item(key = "filter_family") {
+                        FilterChip(
+                            selected = true,
+                            onClick = onClearFamily,
+                            label = { Text(text = selectedFamily) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = stringResource(R.string.close),
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                        )
+                    }
+                }
                 if (selectedYear != null) {
                     item(key = "filter_year") {
                         FilterChip(

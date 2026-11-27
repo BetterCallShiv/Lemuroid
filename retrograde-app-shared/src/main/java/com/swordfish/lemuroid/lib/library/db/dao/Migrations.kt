@@ -184,6 +184,14 @@ object Migrations {
             }
         }
 
+    val VERSION_17_18: Migration =
+        object : Migration(17, 18) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `game_details` ADD COLUMN `families` TEXT DEFAULT NULL")
+                database.execSQL("ALTER TABLE `game_details` ADD COLUMN `manualUrlsJson` TEXT DEFAULT NULL")
+            }
+        }
+
     private fun migrateGamesTableToVersion10(database: SupportSQLiteDatabase) {
         database.execSQL(
             "ALTER TABLE games ADD COLUMN customName TEXT DEFAULT NULL",

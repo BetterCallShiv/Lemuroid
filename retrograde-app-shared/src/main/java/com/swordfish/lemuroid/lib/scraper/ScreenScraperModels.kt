@@ -61,10 +61,17 @@ data class ScreenScraperMedia(
     val format: String? = null,
 )
 
+@Serializable
+data class ScreenScraperManualEntry(
+    val region: String,
+    val url: String,
+)
+
 data class ScrapedGameData(
     val title: String? = null,
     val synopsis: String? = null,
     val genres: String? = null,
+    val families: String? = null,
     val publisher: String? = null,
     val developer: String? = null,
     val releaseDate: String? = null,
@@ -76,5 +83,6 @@ data class ScrapedGameData(
     val boxArtBackUrl: String? = null,
     val screenshotUrls: List<String> = emptyList(),
     val videoUrl: String? = null,
+    val manualEntries: List<ScreenScraperManualEntry> = emptyList(),
     val scraperSource: String = "ScreenScraper",
 )

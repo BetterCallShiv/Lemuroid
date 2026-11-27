@@ -44,6 +44,9 @@ interface GameDetailsDao {
     @Query("UPDATE game_details SET crc32 = :crc32 WHERE gameId = :gameId")
     suspend fun updateCrc32(gameId: Int, crc32: String)
 
+    @Query("UPDATE game_details SET boxArtBackUrl = :boxArtBackUrl WHERE gameId = :gameId")
+    suspend fun updateBoxArtBackUrl(gameId: Int, boxArtBackUrl: String)
+
     @Query("SELECT gameId, rating FROM game_details WHERE rating IS NOT NULL AND rating > 0")
     fun getAllRatings(): Flow<List<GameRating>>
 }

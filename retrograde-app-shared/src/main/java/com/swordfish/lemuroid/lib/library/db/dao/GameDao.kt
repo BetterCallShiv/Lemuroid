@@ -118,7 +118,7 @@ interface GameDao {
 
     @Query(
         """
-        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate FROM games g
+        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate, d.families AS families FROM games g
         LEFT JOIN game_details d ON g.id = d.gameId
         WHERE g.systemId IN (:systemIds)
           AND (
@@ -128,6 +128,7 @@ interface GameDao {
             OR g.developer LIKE '%' || :query || '%'
             OR d.publisher LIKE '%' || :query || '%'
             OR d.genres LIKE '%' || :query || '%'
+            OR d.families LIKE '%' || :query || '%'
             OR d.releaseDate LIKE '%' || :query || '%'
             OR d.crc32 LIKE '%' || :query || '%'
             OR d.synopsis LIKE '%' || :query || '%'
@@ -187,7 +188,7 @@ interface GameDao {
 
     @Query(
         """
-        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate FROM games g
+        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate, d.families AS families FROM games g
         LEFT JOIN game_details d ON g.id = d.gameId
         WHERE g.isFavorite = 1
           AND (
@@ -197,6 +198,7 @@ interface GameDao {
             OR g.developer LIKE '%' || :query || '%'
             OR d.publisher LIKE '%' || :query || '%'
             OR d.genres LIKE '%' || :query || '%'
+            OR d.families LIKE '%' || :query || '%'
             OR d.releaseDate LIKE '%' || :query || '%'
             OR d.crc32 LIKE '%' || :query || '%'
             OR d.synopsis LIKE '%' || :query || '%'
@@ -271,4 +273,5 @@ data class GameListItem(
     val rating: Float?,
     val genres: String?,
     val releaseDate: String? = null,
+    val families: String? = null,
 )

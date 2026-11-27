@@ -89,6 +89,16 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
 
     suspend fun scraperPriority() = stringPreference(R.string.pref_key_scraper_priority, "MIXED")
 
+    fun enableGameManualsFlow(): Flow<Boolean> =
+        sharedPreferences.getBoolean(getString(R.string.pref_key_enable_game_manuals), true).asFlow()
+
+    suspend fun enableGameManuals(): Boolean = booleanPreference(R.string.pref_key_enable_game_manuals, true)
+
+    fun manualLanguageFlow(): Flow<String> =
+        sharedPreferences.getString(getString(R.string.pref_key_manual_language), "auto_en").asFlow()
+
+    suspend fun manualLanguage(): String = stringPreference(R.string.pref_key_manual_language, "auto_en")
+
     suspend fun screenScraperMediaSources(): Set<String> =
         withContext(Dispatchers.IO) {
             val key = getString(R.string.pref_key_screenscraper_media_sources)

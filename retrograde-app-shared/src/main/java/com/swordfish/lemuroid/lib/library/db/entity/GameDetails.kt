@@ -38,6 +38,8 @@ data class GameDetails(
     val boxArtBackUrl: String? = null,
     val screenshotUrlsJson: String? = null,
     val videoUrl: String? = null,
+    val families: String? = null,
+    val manualUrlsJson: String? = null,
     val crc32: String? = null,
     val scraperSource: String? = null,
     val lastScrapedAt: Long? = null,

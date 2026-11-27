@@ -98,7 +98,7 @@ fun LemuroidSettingsList(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .height(56.dp)
+                                .height(46.dp)
                                 .selectable(
                                     role = Role.RadioButton,
                                     selected = isSelected,

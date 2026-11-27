@@ -255,6 +255,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
             var isFavoritesSearchActive by remember { mutableStateOf(false) }
             var favoritesSearchQuery by remember { mutableStateOf("") }
             var selectedSystemGenres by remember { mutableStateOf<Set<String>>(emptySet()) }
+            var selectedSystemFamily by remember { mutableStateOf<String?>(null) }
             var selectedSystemYear by remember { mutableStateOf<String?>(null) }
             var selectedSystemRating by remember { mutableStateOf<Float?>(null) }
             var showSortDialog by remember { mutableStateOf(false) }
@@ -278,6 +279,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                     isSystemSearchActive = false
                     systemSearchQuery = ""
                     selectedSystemGenres = emptySet()
+                    selectedSystemFamily = null
                     selectedSystemYear = null
                     selectedSystemRating = null
                 }
@@ -485,6 +487,8 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             searchQuery = if (isSystemSearchActive) systemSearchQuery else "",
                             selectedGenres = selectedSystemGenres,
                             onGenresChange = { selectedSystemGenres = it },
+                            selectedFamily = selectedSystemFamily,
+                            onClearFamily = { selectedSystemFamily = null },
                             selectedYear = selectedSystemYear,
                             onClearYear = { selectedSystemYear = null },
                             selectedRating = selectedSystemRating,
@@ -612,6 +616,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             onOpenCheats = { startActivity(GameCheatsActivity.newIntent(this@MainActivity, it)) },
                             onSystemClick = { clickedGame ->
                                 selectedSystemGenres = emptySet()
+                                selectedSystemFamily = null
                                 selectedSystemYear = null
                                 selectedSystemRating = null
                                 isSystemSearchActive = false
@@ -638,16 +643,25 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                 when (filter) {
                                     is DetailChipFilter.Genre -> {
                                         selectedSystemGenres = setOf(filter.genre)
+                                        selectedSystemFamily = null
+                                        selectedSystemYear = null
+                                        selectedSystemRating = null
+                                    }
+                                    is DetailChipFilter.Family -> {
+                                        selectedSystemGenres = emptySet()
+                                        selectedSystemFamily = filter.family
                                         selectedSystemYear = null
                                         selectedSystemRating = null
                                     }
                                     is DetailChipFilter.Year -> {
                                         selectedSystemGenres = emptySet()
+                                        selectedSystemFamily = null
                                         selectedSystemYear = filter.year
                                         selectedSystemRating = null
                                     }
                                     is DetailChipFilter.Rating -> {
                                         selectedSystemGenres = emptySet()
+                                        selectedSystemFamily = null
                                         selectedSystemYear = null
                                         selectedSystemRating = filter.rating
                                     }

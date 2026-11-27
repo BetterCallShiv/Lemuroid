@@ -28,6 +28,8 @@
     <string name="pref_key_screenscraper_devpassword" translatable="false">screenscraper_devpassword</string>
     <string name="pref_key_screenscraper_box_art_format" translatable="false">screenscraper_box_art_format</string>
     <string name="pref_key_screenscraper_media_sources" translatable="false">screenscraper_media_sources</string>
+    <string name="pref_key_enable_game_manuals" translatable="false">enable_game_manuals</string>
+    <string name="pref_key_manual_language" translatable="false">manual_language</string>
 
     <string name="pref_key_save_sync_auto" translatable="false">save_sync_auto</string>
     <string name="pref_key_save_sync_enable" translatable="false">save_sync_enable</string>

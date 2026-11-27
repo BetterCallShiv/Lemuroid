@@ -18,6 +18,7 @@ import com.swordfish.lemuroid.lib.library.db.entity.GameWithDetails
 import com.swordfish.lemuroid.lib.scraper.AlphaLemuroidClient
 import com.swordfish.lemuroid.lib.scraper.MediaStorageManager
 import com.swordfish.lemuroid.lib.scraper.ScreenScraperClient
+import com.swordfish.lemuroid.lib.scraper.ScreenScraperManualEntry
 import com.swordfish.lemuroid.lib.scraper.ScreenScraperSystemMapper
 import com.swordfish.lemuroid.metadata.libretrodb.db.LibretroDBManager
 import com.swordfish.lemuroid.app.shared.retroachievements.AchievementsUiState
@@ -61,6 +62,15 @@ class GameDetailViewModel(
         val crc32: String? = null,
     )
 
+    data class ManualUiState(
+        val availableManuals: List<ScreenScraperManualEntry> = emptyList(),
+        val isLoading: Boolean = false,
+        val error: String? = null,
+        val activeManual: Pair<File, ScreenScraperManualEntry>? = null,
+        val manualsEnabled: Boolean = true,
+        val preferredLanguage: String = "auto_en",
+    )
+
     data class UiState(
         val gameWithDetails: GameWithDetails? = null,
         val cheatCount: Int = 0,
@@ -69,6 +79,7 @@ class GameDetailViewModel(
         val crc32: String? = null,
         val actualFileName: String? = null,
         val fileSizeFormatted: String? = null,
+        val manualState: ManualUiState = ManualUiState(),
     )
 
     private val retroAchievementsRepository = RetroAchievementsRepository(appContext)
@@ -79,6 +90,9 @@ class GameDetailViewModel(
     private val libretroDbManager by lazy { LibretroDBManager(appContext) }
     private val isScrapingFlow = MutableStateFlow(false)
     private val fileMetadataFlow = MutableStateFlow(FileMetadata())
+    private val manualLoadingFlow = MutableStateFlow(false)
+    private val manualErrorFlow = MutableStateFlow<String?>(null)
+    private val activeManualFlow = MutableStateFlow<Pair<File, ScreenScraperManualEntry>?>(null)
     private var hasAttemptedInitialScrape = false
     private val metadataJob: Job
     private var scrapeJob: Job? = null
@@ -89,12 +103,48 @@ class GameDetailViewModel(
     private val cheatCountFlow = retrogradeDb.cheatDao()
         .getCheatsForGame(gameId)
 
+    private val manualInternalFlow = combine(
+        gameWithDetailsFlow,
+        settingsManager.enableGameManualsFlow(),
+        settingsManager.manualLanguageFlow(),
+        manualLoadingFlow,
+        manualErrorFlow,
+    ) { gameWithDetails, enabled, prefLang, loading, error ->
+        ManualPrefsSnapshot(gameWithDetails, enabled, prefLang, loading, error)
+    }
+
+    private data class ManualPrefsSnapshot(
+        val gameWithDetails: GameWithDetails?,
+        val enabled: Boolean,
+        val prefLang: String,
+        val loading: Boolean,
+        val error: String?,
+    )
+
+    private val manualUiStateFlow = combine(
+        manualInternalFlow,
+        activeManualFlow,
+    ) { snap, activeManual ->
+        val manuals = snap.gameWithDetails?.details?.manualUrlsJson?.let {
+            screenScraperClient.deserializeManuals(it)
+        } ?: emptyList()
+        ManualUiState(
+            availableManuals = manuals,
+            isLoading = snap.loading,
+            error = snap.error,
+            activeManual = activeManual,
+            manualsEnabled = snap.enabled,
+            preferredLanguage = snap.prefLang,
+        )
+    }
+
     val uiState: StateFlow<UiState> = combine(
         gameWithDetailsFlow,
         cheatCountFlow,
         isScrapingFlow,
         fileMetadataFlow,
-    ) { gameWithDetails, cheats, isScraping, fileMeta ->
+        manualUiStateFlow,
+    ) { gameWithDetails, cheats, isScraping, fileMeta, manualState ->
         val screenshots = gameWithDetails?.details?.screenshotUrlsJson?.let {
             screenScraperClient.deserializeScreenshots(it)
         } ?: emptyList()
@@ -107,6 +157,7 @@ class GameDetailViewModel(
             crc32 = fileMeta.crc32 ?: gameWithDetails?.details?.crc32?.takeIf { it.isNotBlank() && it != "0" },
             actualFileName = fileMeta.actualFileName,
             fileSizeFormatted = fileMeta.fileSizeFormatted,
+            manualState = manualState,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -235,6 +286,61 @@ class GameDetailViewModel(
             val updated = game.copy(isFavorite = !game.isFavorite)
             retrogradeDb.gameDao().update(listOf(updated))
         }
+    }
+
+    fun cacheBackBoxArtIfNeeded() {
+        val gwd = uiState.value.gameWithDetails ?: return
+        val game = gwd.game
+        val rawUrl = gwd.details?.boxArtBackUrl?.takeIf { it.isNotBlank() && !it.startsWith("file://") } ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val romBasename = game.fileName.substringBeforeLast('.')
+            val downloaded = mediaStorageManager.saveOrDownloadMedia(
+                url = rawUrl,
+                systemId = game.systemId,
+                type = MediaStorageManager.MediaType.BOXART_BACK,
+                romBasename = romBasename,
+                downloadedUrlMap = ConcurrentHashMap(),
+            )
+            val localUri = mediaStorageManager.toFileUri(downloaded)
+            if (!localUri.isNullOrBlank()) {
+                retrogradeDb.gameDetailsDao().updateBoxArtBackUrl(game.id, localUri)
+            }
+        }
+    }
+
+    fun openManual(entry: ScreenScraperManualEntry) {
+        val game = uiState.value.gameWithDetails?.game ?: return
+        if (manualLoadingFlow.value) return
+        manualErrorFlow.value = null
+        manualLoadingFlow.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val romBasename = game.fileName.substringBeforeLast('.')
+                val file = mediaStorageManager.saveOrDownloadManual(
+                    url = entry.url,
+                    systemId = game.systemId,
+                    romBasename = romBasename,
+                    region = entry.region,
+                )
+                if (file != null && file.exists() && file.length() > 0L) {
+                    activeManualFlow.value = file to entry
+                } else {
+                    manualErrorFlow.value = "download_failed"
+                }
+            } catch (_: Throwable) {
+                manualErrorFlow.value = "download_failed"
+            } finally {
+                manualLoadingFlow.value = false
+            }
+        }
+    }
+
+    fun closeManual() {
+        activeManualFlow.value = null
+    }
+
+    fun clearManualError() {
+        manualErrorFlow.value = null
     }
 
     private suspend fun scrapeGame(game: Game, force: Boolean) = withContext(Dispatchers.IO) {
@@ -516,9 +622,14 @@ class GameDetailViewModel(
                     bannerUrl = finalBannerUri,
                     logoUrl = finalLogoUri,
                     boxArtFrontUrl = finalBoxArtUri ?: existingBoxArt ?: game.coverFrontUrl,
-                    boxArtBackUrl = finalBackBoxArtUri ?: existingBackBoxArt,
+                    boxArtBackUrl = finalBackBoxArtUri ?: existingBackBoxArt ?: screenScraperData?.boxArtBackUrl,
                     screenshotUrlsJson = screenScraperClient.serializeScreenshots(mergedScreenshotUris),
                     videoUrl = finalVideoUri,
+                    families = screenScraperData?.families ?: existingDetails?.families,
+                    manualUrlsJson = screenScraperData?.manualEntries
+                        ?.takeIf { it.isNotEmpty() }
+                        ?.let { screenScraperClient.serializeManuals(it) }
+                        ?: existingDetails?.manualUrlsJson,
                     crc32 = normalizedCrc,
                     scraperSource = effectiveSource,
                     lastScrapedAt = System.currentTimeMillis(),

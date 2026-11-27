@@ -36,6 +36,7 @@ class GamesViewModel(
     private val metaSystemId = MutableStateFlow(initialMetaSystem)
     private val searchQuery = MutableStateFlow("")
     private val selectedGenres = MutableStateFlow<Set<String>>(emptySet())
+    private val selectedFamily = MutableStateFlow<String?>(null)
     private val selectedYear = MutableStateFlow<String?>(null)
     private val selectedRating = MutableStateFlow<Float?>(null)
     private val sortOrder = MutableStateFlow(GameSortOrder.NAME_ASC)
@@ -46,6 +47,10 @@ class GamesViewModel(
 
     fun changeSelectedGenres(genres: Set<String>) {
         selectedGenres.value = genres
+    }
+
+    fun changeSelectedFamily(family: String?) {
+        selectedFamily.value = family
     }
 
     fun changeSelectedYear(year: String?) {
@@ -95,20 +100,21 @@ class GamesViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     val games: StateFlow<List<GameListItem>> =
         combine(
-            combine(systemDbNames, searchQuery.map { it.trim() }, selectedGenres) { systemIds, query, genres ->
-                Triple(systemIds, query, genres)
+            combine(systemDbNames, searchQuery.map { it.trim() }, selectedGenres, selectedFamily) { systemIds, query, genres, family ->
+                Quad(systemIds, query, genres, family)
             },
             combine(sortOrder, selectedYear, selectedRating) { order, year, rating ->
                 Triple(order, year, rating)
             },
-        ) { (systemIds, query, genres), (order, year, rating) ->
-            FilterParams(systemIds, query, genres, order, year, rating)
+        ) { (systemIds, query, genres, family), (order, year, rating) ->
+            FilterParams(systemIds, query, genres, family, order, year, rating)
         }
-            .flatMapLatest { (systemIds, query, genres, order, year, rating) ->
+            .flatMapLatest { (systemIds, query, genres, family, order, year, rating) ->
                 if (systemIds.isEmpty()) {
                     flowOf(emptyList())
                 } else {
                     val selectedLower = genres.map { it.trim().lowercase() }.filter { it.isNotBlank() }.toSet()
+                    val targetFamily = family?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
                     val targetYear = year?.trim()?.takeIf { it.isNotBlank() }
                     val targetRatingText = rating?.let { String.format(Locale.US, "%.1f", it) }
 
@@ -117,7 +123,7 @@ class GamesViewModel(
                         query = query,
                         sortOrder = order.name,
                     ).map { list ->
-                        if (selectedLower.isEmpty() && targetYear == null && targetRatingText == null) {
+                        if (selectedLower.isEmpty() && targetFamily == null && targetYear == null && targetRatingText == null) {
                             list
                         } else {
                             list.filter { item ->
@@ -131,6 +137,10 @@ class GamesViewModel(
                                         ?: emptySet()
                                     selectedLower.all { it in itemGenres }
                                 }
+                                val matchesFamily = targetFamily == null ||
+                                    item.families
+                                        ?.split(GENRE_SPLIT_REGEX)
+                                        ?.any { it.trim().equals(targetFamily, ignoreCase = true) } == true
                                 val matchesYear = targetYear == null ||
                                     item.releaseDate?.trim()?.startsWith(targetYear) == true
                                 val itemRating = item.rating
@@ -138,7 +148,7 @@ class GamesViewModel(
                                     (itemRating != null && itemRating > 0f &&
                                         String.format(Locale.US, "%.1f", itemRating) == targetRatingText)
 
-                                matchesGenres && matchesYear && matchesRating
+                                matchesGenres && matchesFamily && matchesYear && matchesRating
                             }
                         }
                     }
@@ -151,10 +161,13 @@ class GamesViewModel(
                 initialValue = emptyList(),
             )
 
+    private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
     private data class FilterParams(
         val systemIds: List<String>,
         val query: String,
         val genres: Set<String>,
+        val family: String?,
         val sortOrder: GameSortOrder,
         val year: String?,
         val rating: Float?,

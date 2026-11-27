@@ -42,6 +42,7 @@ class MediaStorageManager(
         SCREENSHOTS("screenshots"),
         TITLES("titles"),
         VIDEOS("videos"),
+        MANUALS("manuals"),
     }
 
     val rootMediaDir: File by lazy {
@@ -82,7 +83,7 @@ class MediaStorageManager(
                 }
                 else -> {
                     categoryDir.listFiles()?.forEach { file ->
-                        if (file.isFile && (file.name == cleanRom || file.name.startsWith("$cleanRom."))) {
+                        if (file.isFile && (file.name == cleanRom || file.name.startsWith("$cleanRom.") || file.name.startsWith("${cleanRom}_"))) {
                             file.delete()
                         }
                     }
@@ -253,6 +254,50 @@ class MediaStorageManager(
             tempFile.delete()
             null
         }
+    }
+
+    fun getManualTargetFile(
+        systemId: String,
+        romBasename: String,
+        region: String,
+    ): File {
+        val cleanRom = sanitizeFilename(romBasename)
+        val cleanRegion = sanitizeFilename(region.lowercase()).ifBlank { "wor" }
+        return File(getCategoryDir(systemId, MediaType.MANUALS), "${cleanRom}_${cleanRegion}.pdf")
+    }
+
+    fun getLocalManualFile(
+        systemId: String,
+        romBasename: String,
+        region: String,
+    ): File? {
+        val file = getManualTargetFile(systemId, romBasename, region)
+        return file.takeIf { it.exists() && it.length() > 0L }
+    }
+
+    suspend fun saveOrDownloadManual(
+        url: String,
+        systemId: String,
+        romBasename: String,
+        region: String,
+    ): File? = withContext(Dispatchers.IO) {
+        if (url.isBlank()) return@withContext null
+        val targetFile = getManualTargetFile(systemId, romBasename, region)
+        if (targetFile.exists() && targetFile.length() > 0L) {
+            return@withContext targetFile
+        }
+        val downloadedBytes = runCatching {
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "AlphaLemuroid")
+                .build()
+            okHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                response.body?.bytes()
+            }
+        }.getOrNull() ?: return@withContext null
+        if (downloadedBytes.isEmpty()) return@withContext null
+        saveBytesAtomically(downloadedBytes, targetFile)
     }
 
     fun toFileUri(file: File?): String? {
