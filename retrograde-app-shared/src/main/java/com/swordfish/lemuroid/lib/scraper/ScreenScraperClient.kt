@@ -43,6 +43,7 @@ class ScreenScraperClient(
         private const val KEY_FETCHED_AT = "ss_cfg_stamp"
         private const val KEY_CACHE_TTL_MS = 7L * 24L * 60L * 60L * 1000L
         private const val MAX_RETRY_ATTEMPTS = 2
+        private const val DEFAULT_API_THREADS = 3
         private const val MAX_ALLOWED_API_THREADS = 5
         private val RETRYABLE_HTTP_CODES = setOf(429, 503)
         private val QUOTA_STOP_HTTP_CODES = setOf(401, 430, 431)
@@ -81,7 +82,7 @@ class ScreenScraperClient(
             "x" to "10",
         )
 
-        private class DynamicThreadGate(initialLimit: Int = 1) {
+        private class DynamicThreadGate(initialLimit: Int = DEFAULT_API_THREADS) {
             private val lock = Any()
             private var limit = initialLimit.coerceIn(1, MAX_ALLOWED_API_THREADS)
             private var inUse = 0
@@ -137,6 +138,24 @@ class ScreenScraperClient(
                 }
             }
 
+            fun raiseLimit(minLimit: Int) {
+                val clamped = minLimit.coerceIn(1, MAX_ALLOWED_API_THREADS)
+                synchronized(lock) {
+                    if (clamped > limit) {
+                        limit = clamped
+                        drainWaitersLocked()
+                    }
+                }
+            }
+
+            fun stepDownOnRateLimit() {
+                synchronized(lock) {
+                    if (limit > 1) {
+                        limit--
+                    }
+                }
+            }
+
             private fun drainWaitersLocked() {
                 while (inUse < limit && waiters.isNotEmpty()) {
                     val next = waiters.removeFirst()
@@ -147,7 +166,7 @@ class ScreenScraperClient(
             }
         }
 
-        private val apiThreadGate = DynamicThreadGate(1)
+        private val apiThreadGate = DynamicThreadGate(DEFAULT_API_THREADS)
         private val threadGateKeyLock = Any()
 
         @Volatile
@@ -535,6 +554,9 @@ class ScreenScraperClient(
                         return resp.code to resp.body?.string()
                     }
                     if (resp.code !in RETRYABLE_HTTP_CODES || attempt == MAX_RETRY_ATTEMPTS) {
+                        if (resp.code == 429) {
+                            apiThreadGate.stepDownOnRateLimit()
+                        }
                         android.util.Log.w(
                             "ScreenScraperClient",
                             "ScreenScraper HTTP ${resp.code} on ${url.encodedPath} (attempt=${attempt + 1})",
@@ -543,6 +565,7 @@ class ScreenScraperClient(
                     }
                     val retryAfterSec = resp.header("Retry-After")?.toLongOrNull()
                     retryDelayMs = if (resp.code == 429) {
+                        apiThreadGate.stepDownOnRateLimit()
                         retryAfterSec?.times(1000L)?.coerceIn(1000L, 10000L)
                             ?: (1500L * (attempt + 1) + Random.nextLong(250L, 650L))
                     } else {
@@ -574,7 +597,7 @@ class ScreenScraperClient(
             }
         }
         if (switched) {
-            apiThreadGate.updateLimit(1)
+            apiThreadGate.updateLimit(DEFAULT_API_THREADS)
         }
     }
 
@@ -587,7 +610,7 @@ class ScreenScraperClient(
             ?.toIntOrNull()
             ?: return
         if (threads > 0) {
-            apiThreadGate.updateLimit(threads)
+            apiThreadGate.raiseLimit(threads)
         }
     }
 
