@@ -13,7 +13,7 @@
 
 | <img src="docs/screenshots/home.jpg" width="270" alt="Home Screen"/> | <img src="docs/screenshots/discover.jpg" width="270" alt="Discover & Collections"/> | <img src="docs/screenshots/systems.jpg" width="270" alt="System Grid View"/> |
 |:---:|:---:|:---:|
-| **Continue Playing & Home** | **Discover & Collections** | **Grid View & Genre Filters** |
+| **Continue Playing** | **Collections** | **Grid View & Genre Filters** |
 
 | <img src="docs/screenshots/favorites.jpg" width="270" alt="Favorites Screen"/> | <img src="docs/screenshots/stats.jpg" width="270" alt="Library Stats"/> | <img src="docs/screenshots/details.jpg" width="270" alt="Game Details"/> |
 |:---:|:---:|:---:|
@@ -25,11 +25,11 @@
 
 | <img src="docs/screenshots/ra_banner.jpg" width="270" alt="In-Game Unlock Banner"/> | <img src="docs/screenshots/cheats.jpg" width="270" alt="In-Game Cheat Manager"/> | <img src="docs/screenshots/patches.jpg" width="270" alt="In-Game ROM Patch Manager"/> |
 |:---:|:---:|:---:|
-| **Achievement Unlock Banner** | **Cheat Manager** | **ROM Patches** |
+| **Achievement Banner** | **Cheat Manager** | **ROM Patches** |
 
 | <img src="docs/screenshots/backup_create.jpg" width="270" alt="Create Backup Dialog"/> | <img src="docs/screenshots/backup_progress.jpg" width="270" alt="Backup Progress"/> | <img src="docs/screenshots/restore_success.jpg" width="270" alt="Restore Summary"/> |
 |:---:|:---:|:---:|
-| **Selective Backup Creation** | **Live Backup Progress** | **Restore Summary** |
+| **Selective Backup** | **Live Backup Progress** | **Restore Summary** |
 
 | <img src="docs/screenshots/hud_editor_lynx.jpg" width="270" alt="Advanced HUD Editor Controls"/> | <img src="docs/screenshots/hud_editor_grid.jpg" width="270" alt="HUD Editor Symmetry Grid"/> | <img src="docs/screenshots/hud_custom_n64.jpg" width="270" alt="Custom N64 HUD Layout"/> |
 |:---:|:---:|:---:|
