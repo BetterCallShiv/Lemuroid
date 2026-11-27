@@ -207,13 +207,6 @@ If you organize ROMs by folder, name each folder using the Folder column below. 
 
 ---
 
-## 📋 TODO
-
-- [ ] **Reverse Support:** On-screen hold-to-rewind button to reverse gameplay.
-- [ ] **Custom Shaders Import:** Support for importing external Libretro shader presets and custom CRT/LCD display filters.
-
----
-
 ## 🛠️ Building from Source
 
 ### Prerequisites
