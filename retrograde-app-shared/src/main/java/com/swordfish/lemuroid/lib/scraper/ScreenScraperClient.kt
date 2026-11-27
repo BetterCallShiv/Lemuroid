@@ -42,8 +42,8 @@ class ScreenScraperClient(
         private const val KEY_SOFT_NAME = "ss_cfg_softname"
         private const val KEY_FETCHED_AT = "ss_cfg_stamp"
         private const val KEY_CACHE_TTL_MS = 7L * 24L * 60L * 60L * 1000L
-        private const val MAX_RETRY_ATTEMPTS = 2
-        private val RETRYABLE_HTTP_CODES = setOf(429, 503)
+        private const val MAX_RETRY_ATTEMPTS = 3
+        private val RETRYABLE_HTTP_CODES = setOf(429, 430, 503)
         private val CONFIG_URLS = listOf(
             "https://api.alphalemuroid.workers.dev/ss/config",
             "https://api.alphalemuroid.indevs.in/ss/config",
@@ -431,6 +431,14 @@ class ScreenScraperClient(
         return builder
     }
 
+    private fun parseJsonObjectSafe(rawBody: String?): JSONObject? {
+        if (rawBody.isNullOrBlank()) return null
+        val start = rawBody.indexOf('{')
+        if (start < 0) return null
+        val trimmed = if (start > 0) rawBody.substring(start) else rawBody
+        return runCatching { JSONObject(trimmed) }.getOrNull()
+    }
+
     private suspend fun executeSsGet(url: HttpUrl): Pair<Int, String?> {
         for (attempt in 0..MAX_RETRY_ATTEMPTS) {
             var retryDelayMs: Long? = null
@@ -445,17 +453,21 @@ class ScreenScraperClient(
                         return resp.code to resp.body?.string()
                     }
                     if (resp.code !in RETRYABLE_HTTP_CODES || attempt == MAX_RETRY_ATTEMPTS) {
+                        android.util.Log.w(
+                            "ScreenScraperClient",
+                            "ScreenScraper HTTP ${resp.code} on ${url.encodedPath} (attempt=${attempt + 1})",
+                        )
                         return resp.code to null
                     }
                     val retryAfterSec = resp.header("Retry-After")?.toLongOrNull()
-                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 4000L)
-                        ?: (450L * (attempt + 1) + Random.nextLong(50L, 250L))
+                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(400L, 5000L)
+                        ?: (600L * (attempt + 1) + Random.nextLong(80L, 320L))
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Throwable) {
                 if (attempt == MAX_RETRY_ATTEMPTS) return 0 to null
-                retryDelayMs = 300L * (attempt + 1)
+                retryDelayMs = 350L * (attempt + 1)
             }
             if (retryDelayMs != null) {
                 delay(retryDelayMs)
@@ -510,7 +522,7 @@ class ScreenScraperClient(
         val cleanFallback = cleanSearchTitle(fallbackTitle ?: romName)
 
         if (romName.isNotEmpty()) {
-            val (infoCode, infoBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+            val (_, infoBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
                 buildBaseUrlBuilder(SS_INFO_URL, creds, systemEid, cleanUser, cleanPass).apply {
                     addQueryParameter("romnom", romName)
                     addQueryParameter("romtype", "rom")
@@ -520,30 +532,27 @@ class ScreenScraperClient(
                     }
                 }.build()
             }
-            if (infoCode == 430) {
-                return@withContext null
-            }
-            val hashJeu = infoBody?.let {
-                runCatching { JSONObject(it).optJSONObject("response")?.optJSONObject("jeu") }.getOrNull()
-            }
+            val hashJeu = parseJsonObjectSafe(infoBody)?.optJSONObject("response")?.optJSONObject("jeu")
             if (hashJeu != null) return@withContext hashJeu
         }
 
-        if (cleanFallback.length < 2) return@withContext null
+        val searchCandidates = listOf(cleanFallback, cleanSearchTitle(romName))
+            .map { it.trim() }
+            .filter { it.length >= 2 }
+            .distinctBy { it.lowercase(Locale.ROOT) }
 
-        val (searchCode, searchBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
-            buildBaseUrlBuilder(SS_SEARCH_URL, creds, systemEid, cleanUser, cleanPass)
-                .addQueryParameter("recherche", cleanFallback)
-                .build()
+        var bestMatch: JSONObject? = null
+        for (queryTitle in searchCandidates) {
+            val (_, searchBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+                buildBaseUrlBuilder(SS_SEARCH_URL, creds, systemEid, cleanUser, cleanPass)
+                    .addQueryParameter("recherche", queryTitle)
+                    .build()
+            }
+            val jeuxRaw = parseJsonObjectSafe(searchBody)?.optJSONObject("response")?.opt("jeux")
+            bestMatch = pickBestScreenScraperMatch(jeuxRaw, queryTitle)
+            if (bestMatch != null) break
         }
-        if (searchCode == 430 || searchBody == null) {
-            return@withContext null
-        }
-
-        val bestMatch = runCatching {
-            val jeuxRaw = JSONObject(searchBody).optJSONObject("response")?.opt("jeux")
-            pickBestScreenScraperMatch(jeuxRaw, cleanFallback)
-        }.getOrNull() ?: return@withContext null
+        if (bestMatch == null) return@withContext null
 
         val gameId = bestMatch.optString("id").trim()
         if (gameId.isEmpty()) return@withContext null
@@ -554,9 +563,7 @@ class ScreenScraperClient(
                 .build()
         }
 
-        enrichedBody?.let {
-            runCatching { JSONObject(it).optJSONObject("response")?.optJSONObject("jeu") }.getOrNull()
-        } ?: bestMatch
+        parseJsonObjectSafe(enrichedBody)?.optJSONObject("response")?.optJSONObject("jeu") ?: bestMatch
     }
 
     @Suppress("UNUSED_PARAMETER")
