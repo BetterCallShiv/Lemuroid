@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -51,6 +52,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.documentfile.provider.DocumentFile
@@ -245,6 +247,11 @@ private fun ScraperSettings() {
             prefs.getString(context.getString(R.string.pref_key_screenscraper_password), "") ?: ""
         )
     }
+    var threads by remember {
+        mutableStateOf(
+            ScreenScraperClient.getConfiguredApiThreads(context).toString()
+        )
+    }
     var showDialog by remember { mutableStateOf(false) }
     var showMediaStorageDialog by remember { mutableStateOf(false) }
     var showClearAllConfirmDialog by remember { mutableStateOf(false) }
@@ -278,11 +285,13 @@ private fun ScraperSettings() {
         LemuroidSettingsMenuLink(
             title = { Text(text = stringResource(id = R.string.settings_title_screenscraper_account)) },
             subtitle = {
+                val threadCount = threads.toIntOrNull() ?: ScreenScraperClient.DEFAULT_API_THREADS
+                val threadLabel = if (threadCount == 1) "1 thread" else "$threadCount threads"
                 Text(
                     text = if (username.isNotBlank()) {
-                        "Logged in as: $username"
+                        "Logged in as: $username ($threadLabel)"
                     } else {
-                        stringResource(id = R.string.settings_description_screenscraper_account)
+                        "${stringResource(id = R.string.settings_description_screenscraper_account)} ($threadLabel)"
                     },
                 )
             },
@@ -623,7 +632,13 @@ private fun ScraperSettings() {
     if (showDialog) {
         var tempUser by remember { mutableStateOf(username) }
         var tempPass by remember { mutableStateOf(password) }
+        var tempThreads by remember { mutableStateOf(threads) }
         var isVerifying by remember { mutableStateOf(false) }
+        val parsedThreads = tempThreads.trim().let { raw ->
+            if (raw.isEmpty()) ScreenScraperClient.DEFAULT_API_THREADS else raw.toIntOrNull()
+        }
+        val isThreadsValid = parsedThreads != null &&
+            parsedThreads in ScreenScraperClient.MIN_USER_API_THREADS..ScreenScraperClient.MAX_USER_API_THREADS
 
         AlertDialog(
             onDismissRequest = { if (!isVerifying) showDialog = false },
@@ -651,6 +666,19 @@ private fun ScraperSettings() {
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    OutlinedTextField(
+                        value = tempThreads,
+                        onValueChange = { input ->
+                            tempThreads = input.filter { it.isDigit() }.take(2)
+                        },
+                        label = { Text(stringResource(R.string.settings_screenscraper_threads)) },
+                        placeholder = { Text(ScreenScraperClient.DEFAULT_API_THREADS.toString()) },
+                        isError = tempThreads.isNotBlank() && !isThreadsValid,
+                        singleLine = true,
+                        enabled = !isVerifying,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     if (isVerifying) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -672,29 +700,49 @@ private fun ScraperSettings() {
             },
             confirmButton = {
                 TextButton(
-                    enabled = !isVerifying,
+                    enabled = !isVerifying && isThreadsValid,
                     onClick = {
                         val u = tempUser.trim()
                         val p = tempPass.trim()
+                        val resolvedThreads = (parsedThreads ?: ScreenScraperClient.DEFAULT_API_THREADS)
+                            .coerceIn(
+                                ScreenScraperClient.MIN_USER_API_THREADS,
+                                ScreenScraperClient.MAX_USER_API_THREADS,
+                            )
+                            .toString()
+
                         if (u.isEmpty() && p.isEmpty()) {
+                            val wasLoggedIn = username.isNotBlank() || password.isNotBlank()
                             prefs.edit()
                                 .putString(context.getString(R.string.pref_key_screenscraper_user), "")
                                 .putString(context.getString(R.string.pref_key_screenscraper_password), "")
+                                .putString(context.getString(R.string.pref_key_screenscraper_threads), resolvedThreads)
                                 .apply()
                             username = ""
                             password = ""
+                            threads = resolvedThreads
+                            ScreenScraperClient.refreshThreadLimit(context.applicationContext)
                             showDialog = false
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.settings_screenscraper_logged_out),
-                                Toast.LENGTH_SHORT,
-                            ).show()
+                            if (wasLoggedIn) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.settings_screenscraper_logged_out),
+                                    Toast.LENGTH_SHORT,
+                                ).show()
+                            }
                         } else if (u.isEmpty() || p.isEmpty()) {
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.settings_screenscraper_login_failed, "Enter both username and password"),
                                 Toast.LENGTH_SHORT,
                             ).show()
+                        } else if (u == username && p == password) {
+                            prefs.edit()
+                                .putString(context.getString(R.string.pref_key_screenscraper_threads), resolvedThreads)
+                                .apply()
+                            threads = resolvedThreads
+                            ScreenScraperClient.refreshThreadLimit(context.applicationContext)
+                            showDialog = false
                         } else {
                             isVerifying = true
                             coroutineScope.launch {
@@ -706,9 +754,12 @@ private fun ScraperSettings() {
                                         prefs.edit()
                                             .putString(context.getString(R.string.pref_key_screenscraper_user), u)
                                             .putString(context.getString(R.string.pref_key_screenscraper_password), p)
+                                            .putString(context.getString(R.string.pref_key_screenscraper_threads), resolvedThreads)
                                             .apply()
                                         username = u
                                         password = p
+                                        threads = resolvedThreads
+                                        ScreenScraperClient.refreshThreadLimit(context.applicationContext)
                                         showDialog = false
                                         Toast.makeText(
                                             context,

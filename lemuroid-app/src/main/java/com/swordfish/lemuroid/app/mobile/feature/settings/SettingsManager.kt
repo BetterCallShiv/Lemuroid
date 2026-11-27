@@ -6,6 +6,7 @@ import com.fredporciuncula.flow.preferences.FlowSharedPreferences
 import com.swordfish.lemuroid.R
 import com.swordfish.lemuroid.app.shared.settings.HDModeQuality
 import com.swordfish.lemuroid.common.math.Fraction
+import com.swordfish.lemuroid.lib.scraper.ScreenScraperClient
 import com.swordfish.lemuroid.lib.storage.cache.CacheCleaner
 import dagger.Lazy
 import kotlinx.coroutines.Dispatchers
@@ -80,6 +81,15 @@ class SettingsManager(private val context: Context, sharedPreferences: Lazy<Shar
     suspend fun screenScraperUser() = stringPreference(R.string.pref_key_screenscraper_user, "")
 
     suspend fun screenScraperPassword() = stringPreference(R.string.pref_key_screenscraper_password, "")
+
+    suspend fun screenScraperThreads(): Int =
+        stringPreference(
+            R.string.pref_key_screenscraper_threads,
+            ScreenScraperClient.DEFAULT_API_THREADS.toString(),
+        ).trim().toIntOrNull()?.coerceIn(
+            ScreenScraperClient.MIN_USER_API_THREADS,
+            ScreenScraperClient.MAX_USER_API_THREADS,
+        ) ?: ScreenScraperClient.DEFAULT_API_THREADS
 
     suspend fun screenScraperDevId() = stringPreference(R.string.pref_key_screenscraper_devid, "")
 

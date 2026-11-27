@@ -24,6 +24,7 @@
     <string name="pref_key_grid_quick_play" translatable="false">grid_quick_play</string>
     <string name="pref_key_screenscraper_user" translatable="false">screenscraper_user</string>
     <string name="pref_key_screenscraper_password" translatable="false">screenscraper_password</string>
+    <string name="pref_key_screenscraper_threads" translatable="false">screenscraper_threads</string>
     <string name="pref_key_screenscraper_devid" translatable="false">screenscraper_devid</string>
     <string name="pref_key_screenscraper_devpassword" translatable="false">screenscraper_devpassword</string>
     <string name="pref_key_screenscraper_box_art_format" translatable="false">screenscraper_box_art_format</string>

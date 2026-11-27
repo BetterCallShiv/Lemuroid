@@ -349,6 +349,7 @@
     <string name="settings_screenscraper_login_success">Logged in as %1$s (%2$d threads)</string>
     <string name="settings_screenscraper_login_failed">ScreenScraper Login Failed: %1$s</string>
     <string name="settings_screenscraper_logged_out">Logged out</string>
+    <string name="settings_screenscraper_threads">Threads (1–3)</string>
     <string name="settings_title_box_art_format">Box art format</string>
     <string name="settings_box_art_format_2d">2D box art</string>
     <string name="settings_box_art_format_3d">3D box art</string>

@@ -43,8 +43,10 @@ class ScreenScraperClient(
         private const val KEY_FETCHED_AT = "ss_cfg_stamp"
         private const val KEY_CACHE_TTL_MS = 7L * 24L * 60L * 60L * 1000L
         private const val MAX_RETRY_ATTEMPTS = 2
-        private const val DEFAULT_API_THREADS = 3
-        private const val MAX_ALLOWED_API_THREADS = 5
+        const val MIN_USER_API_THREADS = 1
+        const val MAX_USER_API_THREADS = 3
+        const val DEFAULT_API_THREADS = 3
+        private const val PREF_KEY_SCREENSCRAPER_THREADS = "screenscraper_threads"
         private val RETRYABLE_HTTP_CODES = setOf(429, 503)
         private val QUOTA_STOP_HTTP_CODES = setOf(401, 430, 431)
         private val ISO_ROM_EXTENSIONS = setOf(
@@ -84,7 +86,7 @@ class ScreenScraperClient(
 
         private class DynamicThreadGate(initialLimit: Int = DEFAULT_API_THREADS) {
             private val lock = Any()
-            private var limit = initialLimit.coerceIn(1, MAX_ALLOWED_API_THREADS)
+            private var limit = initialLimit.coerceIn(MIN_USER_API_THREADS, MAX_USER_API_THREADS)
             private var inUse = 0
             private val waiters = ArrayDeque<CompletableDeferred<Unit>>()
 
@@ -129,19 +131,9 @@ class ScreenScraperClient(
             }
 
             fun updateLimit(newLimit: Int) {
-                val clamped = newLimit.coerceIn(1, MAX_ALLOWED_API_THREADS)
+                val clamped = newLimit.coerceIn(MIN_USER_API_THREADS, MAX_USER_API_THREADS)
                 synchronized(lock) {
                     if (clamped != limit) {
-                        limit = clamped
-                        drainWaitersLocked()
-                    }
-                }
-            }
-
-            fun raiseLimit(minLimit: Int) {
-                val clamped = minLimit.coerceIn(1, MAX_ALLOWED_API_THREADS)
-                synchronized(lock) {
-                    if (clamped > limit) {
                         limit = clamped
                         drainWaitersLocked()
                     }
@@ -321,6 +313,23 @@ class ScreenScraperClient(
             val user = appPrefs.getString("screenscraper_user", "").orEmpty().trim()
             val pass = appPrefs.getString("screenscraper_password", "").orEmpty().trim()
             return if (user.isNotEmpty() && pass.isNotEmpty()) user to pass else null
+        }
+
+        fun getConfiguredApiThreads(context: Context?): Int {
+            val ctx = context ?: return DEFAULT_API_THREADS
+            val appPrefs = runCatching { SharedPreferencesHelper.getSharedPreferences(ctx) }.getOrNull()
+                ?: return DEFAULT_API_THREADS
+            val raw = appPrefs.getString(PREF_KEY_SCREENSCRAPER_THREADS, "")?.trim().orEmpty()
+            val parsed = raw.toIntOrNull() ?: return DEFAULT_API_THREADS
+            return parsed.coerceIn(MIN_USER_API_THREADS, MAX_USER_API_THREADS)
+        }
+
+        fun refreshThreadLimit(context: Context?) {
+            val configured = getConfiguredApiThreads(context)
+            synchronized(threadGateKeyLock) {
+                lastThreadGateKey = null
+            }
+            apiThreadGate.updateLimit(configured)
         }
 
         private fun readCustomDevCredsFromPrefs(context: Context): DevCredentials? {
@@ -587,7 +596,8 @@ class ScreenScraperClient(
     }
 
     private fun syncThreadGateIdentity(creds: DevCredentials, cleanUser: String?) {
-        val gateKey = "${creds.devId}:${cleanUser.orEmpty()}"
+        val configuredThreads = getConfiguredApiThreads(context)
+        val gateKey = "${creds.devId}:${cleanUser.orEmpty()}:$configuredThreads"
         val switched = synchronized(threadGateKeyLock) {
             if (lastThreadGateKey != gateKey) {
                 lastThreadGateKey = gateKey
@@ -597,20 +607,7 @@ class ScreenScraperClient(
             }
         }
         if (switched) {
-            apiThreadGate.updateLimit(DEFAULT_API_THREADS)
-        }
-    }
-
-    private fun syncMaxThreadsFromResponse(json: JSONObject?) {
-        val threads = json
-            ?.optJSONObject("response")
-            ?.optJSONObject("ssuser")
-            ?.optString("maxthreads")
-            ?.trim()
-            ?.toIntOrNull()
-            ?: return
-        if (threads > 0) {
-            apiThreadGate.raiseLimit(threads)
+            apiThreadGate.updateLimit(configuredThreads)
         }
     }
 
@@ -679,7 +676,6 @@ class ScreenScraperClient(
             }
             if (infoCode in QUOTA_STOP_HTTP_CODES) return@withContext null
             val infoJson = parseJsonObjectSafe(infoBody)
-            syncMaxThreadsFromResponse(infoJson)
             val hashJeu = infoJson?.optJSONObject("response")?.optJSONObject("jeu")
             if (hashJeu != null) return@withContext hashJeu
         }
@@ -698,7 +694,6 @@ class ScreenScraperClient(
             }
             if (searchCode in QUOTA_STOP_HTTP_CODES) return@withContext null
             val searchJson = parseJsonObjectSafe(searchBody)
-            syncMaxThreadsFromResponse(searchJson)
             val jeuxRaw = searchJson?.optJSONObject("response")?.opt("jeux")
             bestMatch = pickBestScreenScraperMatch(jeuxRaw, queryTitle)
             if (bestMatch != null) break
@@ -716,7 +711,6 @@ class ScreenScraperClient(
         if (enrichedCode in QUOTA_STOP_HTTP_CODES) return@withContext bestMatch
 
         val enrichedJson = parseJsonObjectSafe(enrichedBody)
-        syncMaxThreadsFromResponse(enrichedJson)
         enrichedJson?.optJSONObject("response")?.optJSONObject("jeu") ?: bestMatch
     }
 
@@ -789,7 +783,6 @@ class ScreenScraperClient(
                 val resolvedName = ssuser.optString("id").trim().ifBlank { cleanUser }
                 val threads = ssuser.optString("maxthreads").trim().toIntOrNull()?.coerceAtLeast(1) ?: 1
                 syncThreadGateIdentity(initialCreds, cleanUser)
-                syncMaxThreadsFromResponse(json)
                 return@withContext AccountVerifyResult.Success(resolvedName, threads)
             }
             return@withContext AccountVerifyResult.InvalidCredentials()
