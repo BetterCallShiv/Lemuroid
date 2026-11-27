@@ -13,7 +13,7 @@ import androidx.documentfile.provider.DocumentFile
 import coil.imageLoader
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.mobile.shared.NotificationsManager
-import com.swordfish.lemuroid.common.kotlin.calculateRomCrc32
+import com.swordfish.lemuroid.common.kotlin.calculateRomHashInfo
 import com.swordfish.lemuroid.common.kotlin.isZipped
 import com.swordfish.lemuroid.common.kotlin.openUriInputStream
 import com.swordfish.lemuroid.lib.library.MetaSystemID
@@ -426,22 +426,26 @@ class BatchScraperManager(
             if (uri != null) {
                 runCatching {
                     appContext.openUriInputStream(uri)?.use { stream ->
-                        crc = stream.calculateRomCrc32(
+                        val hashInfo = stream.calculateRomHashInfo(
                             fileName = game.fileName,
                             isArcadeZip = isArcadeZip,
                             isZipArchive = isZip,
                             targetEntryName = game.fileName,
                         )
+                        crc = hashInfo.crc32
+                        fileSize = hashInfo.uncompressedBytes
                     }
                 }
-                runCatching {
-                    if (uri.scheme == null || uri.scheme.equals("file", ignoreCase = true)) {
-                        val path = uri.path ?: uri.toString().takeIf { it.startsWith("/") }
-                        fileSize = path?.let { java.io.File(it).takeIf(java.io.File::exists)?.length()?.takeIf { len -> len > 0L } }
-                    }
-                    if (fileSize == null) {
-                        appContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
-                            fileSize = pfd.statSize.takeIf { it > 0 }
+                if (fileSize == null) {
+                    runCatching {
+                        if (uri.scheme == null || uri.scheme.equals("file", ignoreCase = true)) {
+                            val path = uri.path ?: uri.toString().takeIf { it.startsWith("/") }
+                            fileSize = path?.let { java.io.File(it).takeIf(java.io.File::exists)?.length()?.takeIf { len -> len > 0L } }
+                        }
+                        if (fileSize == null) {
+                            appContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                                fileSize = pfd.statSize.takeIf { it > 0 }
+                            }
                         }
                     }
                 }
@@ -461,10 +465,11 @@ class BatchScraperManager(
                 ?: alphaLemuroidClient.cleanGameTitle(game.displayName())
 
             val systemEid = ScreenScraperSystemMapper.getSystemEid(game.systemId)
-            val user = settingsManager.screenScraperUser().takeIf { it.isNotBlank() }
-            val pass = settingsManager.screenScraperPassword().takeIf { it.isNotBlank() }
+            val storedCreds = ScreenScraperClient.getUserCredentials(appContext)
+            val user = settingsManager.screenScraperUser().takeIf { it.isNotBlank() } ?: storedCreds?.first
+            val pass = settingsManager.screenScraperPassword().takeIf { it.isNotBlank() } ?: storedCreds?.second
             val customDevId = settingsManager.screenScraperDevId().takeIf { it.isNotBlank() }
-            val customDevPass = settingsManager.screenScraperDevPassword().takeIf { it.isNotBlank() }
+            val customDevPassword = settingsManager.screenScraperDevPassword().takeIf { it.isNotBlank() }
             val boxArtFormat = settingsManager.screenScraperBoxArtFormat()
             val scraperMode = settingsManager.scraperPriority().uppercase()
             val useScreenScraper = scraperMode == "SCREENSCRAPER" || scraperMode == "MIXED"
@@ -477,49 +482,44 @@ class BatchScraperManager(
             val shouldDownloadVideo = mediaSources.contains("video")
             val shouldDownloadFanart = mediaSources.contains("fanart")
 
-            val (ssJeu, alphaLemuroidData) = coroutineScope {
+            val (screenScraperData, alphaLemuroidData) = coroutineScope {
                 val ssDeferred = async {
-                    if (useScreenScraper && systemEid != null) {
-                        runCatching {
-                            screenScraperClient.scrapeGame(
-                                systemId = game.systemId,
-                                fileName = game.fileName,
-                                fallbackTitle = canonicalTitle.takeIf { it.isNotBlank() } ?: game.fileName,
-                                crc32 = crc,
-                                fileSizeBytes = fileSize,
-                                userId = user,
-                                userPassword = pass,
-                                customDevId = customDevId,
-                                customDevPassword = customDevPass,
-                            )
-                        }.getOrNull()
-                    } else null
+                    if (!useScreenScraper || systemEid == null) return@async null
+                    val jeu = runCatching {
+                        screenScraperClient.scrapeGame(
+                            systemId = game.systemId,
+                            fileName = game.fileName,
+                            fallbackTitle = canonicalTitle,
+                            crc32 = crc,
+                            fileSizeBytes = fileSize,
+                            userId = user,
+                            userPassword = pass,
+                            customDevId = customDevId,
+                            customDevPassword = customDevPassword,
+                        )
+                    }.getOrNull() ?: return@async null
+                    runCatching {
+                        screenScraperClient.parseJeuJsonObject(
+                            jeu = jeu,
+                            systemEid = systemEid,
+                            boxArtFormat = boxArtFormat,
+                            mediaSources = mediaSources,
+                        )
+                    }.getOrNull()
                 }
                 val igdbDeferred = async {
-                    if (useIgdb) {
-                        runCatching {
-                            alphaLemuroidClient.scrapeIgdb(
-                                systemId = game.systemId,
-                                canonicalTitle = canonicalTitle,
-                                fileName = game.fileName,
-                                crc32 = crc,
-                            )
-                        }.getOrNull()
-                    } else null
+                    if (!useIgdb) return@async null
+                    runCatching {
+                        alphaLemuroidClient.scrapeIgdb(
+                            systemId = game.systemId,
+                            canonicalTitle = canonicalTitle,
+                            fileName = game.fileName,
+                            crc32 = crc,
+                        )
+                    }.getOrNull()
                 }
                 ssDeferred.await() to igdbDeferred.await()
             }
-
-            val screenScraperData = if (useScreenScraper && systemEid != null && ssJeu != null) {
-                runCatching {
-                    screenScraperClient.parseJeuJsonObject(
-                        jeu = ssJeu,
-                        systemEid = systemEid,
-                        boxArtFormat = boxArtFormat,
-                        mediaSources = mediaSources,
-                    )
-                }.getOrNull()
-            } else null
 
             val rawAccurateTitle = if (preferIgdb) {
                 alphaLemuroidData?.name?.takeIf { it.isNotBlank() }

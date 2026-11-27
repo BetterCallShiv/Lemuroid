@@ -72,12 +72,12 @@ class MediaStorageManager(
                         refreshedCreds = true
                         ScreenScraperClient.invalidateCachedDevCreds(context)
                         retryDelayMs = 150L
-                    } else if (response.code !in setOf(429, 430, 503) || attempt == 2) {
+                    } else if (response.code !in setOf(429, 503) || attempt == 2) {
                         return null
                     } else {
                         val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
                         retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(400L, 5000L)
-                            ?: (600L * (attempt + 1) + Random.nextLong(80L, 300L))
+                            ?: (700L * (attempt + 1) + Random.nextLong(100L, 350L))
                     }
                 }
             } catch (e: CancellationException) {

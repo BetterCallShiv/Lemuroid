@@ -9,7 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import coil.imageLoader
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
-import com.swordfish.lemuroid.common.kotlin.calculateRomCrc32
+import com.swordfish.lemuroid.common.kotlin.calculateRomHashInfo
 import com.swordfish.lemuroid.common.kotlin.openUriInputStream
 import com.swordfish.lemuroid.lib.cheats.cht.ChtDiscoveryManager
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
@@ -61,6 +61,7 @@ class GameDetailViewModel(
         val fileSizeFormatted: String? = null,
         val fileSizeBytes: Long? = null,
         val crc32: String? = null,
+        val romSizeBytes: Long? = null,
     )
 
     data class ManualUiState(
@@ -213,21 +214,28 @@ class GameDetailViewModel(
                 val isZip = game.fileUri.endsWith(".zip", ignoreCase = true) ||
                     game.fileName.endsWith(".zip", ignoreCase = true) ||
                     diskName?.endsWith(".zip", ignoreCase = true) == true
-                val computedCrc = runCatching {
+                val hashInfo = runCatching {
                     appContext.openUriInputStream(uri)?.use { stream ->
-                        stream.calculateRomCrc32(
+                        stream.calculateRomHashInfo(
                             fileName = diskName ?: game.fileName,
                             isArcadeZip = isArcadeZip,
                             isZipArchive = isZip,
                             targetEntryName = game.fileName,
-                        ).uppercase()
+                        )
                     }
-                }.getOrNull()?.takeIf { it.isNotBlank() && it != "0" }
-                if (computedCrc != null) {
-                    fileMetadataFlow.value = fileMetadataFlow.value.copy(crc32 = computedCrc)
-                    val existing = retrogradeDb.gameDetailsDao().getGameDetailsDirect(game.id)
-                    if (existing != null && existing.crc32 != computedCrc) {
-                        retrogradeDb.gameDetailsDao().updateCrc32(game.id, computedCrc)
+                }.getOrNull()
+                val computedCrc = hashInfo?.crc32?.uppercase()?.takeIf { it.isNotBlank() && it != "0" }
+                val effectiveRomSize = hashInfo?.uncompressedBytes ?: diskSizeBytes
+                if (computedCrc != null || effectiveRomSize != null) {
+                    fileMetadataFlow.value = fileMetadataFlow.value.copy(
+                        crc32 = computedCrc ?: fileMetadataFlow.value.crc32,
+                        romSizeBytes = effectiveRomSize ?: fileMetadataFlow.value.romSizeBytes,
+                    )
+                    if (computedCrc != null) {
+                        val existing = retrogradeDb.gameDetailsDao().getGameDetailsDirect(game.id)
+                        if (existing != null && existing.crc32 != computedCrc) {
+                            retrogradeDb.gameDetailsDao().updateCrc32(game.id, computedCrc)
+                        }
                     }
                 }
             }
@@ -364,7 +372,7 @@ class GameDetailViewModel(
             metadataJob.join()
             val meta = fileMetadataFlow.value
             val crc = meta.crc32
-            val fileSize = meta.fileSizeBytes
+            val fileSize = meta.romSizeBytes ?: meta.fileSizeBytes
 
             val libretroRom = if (!crc.isNullOrBlank() && crc != "0") {
                 runCatching {
@@ -380,10 +388,11 @@ class GameDetailViewModel(
                 ?: alphaLemuroidClient.cleanGameTitle(game.displayName())
 
             val systemEid = ScreenScraperSystemMapper.getSystemEid(game.systemId)
-            val user = settingsManager.screenScraperUser().takeIf { it.isNotBlank() }
-            val pass = settingsManager.screenScraperPassword().takeIf { it.isNotBlank() }
+            val storedCreds = ScreenScraperClient.getUserCredentials(appContext)
+            val user = settingsManager.screenScraperUser().takeIf { it.isNotBlank() } ?: storedCreds?.first
+            val pass = settingsManager.screenScraperPassword().takeIf { it.isNotBlank() } ?: storedCreds?.second
             val customDevId = settingsManager.screenScraperDevId().takeIf { it.isNotBlank() }
-            val customDevPass = settingsManager.screenScraperDevPassword().takeIf { it.isNotBlank() }
+            val customDevPassword = settingsManager.screenScraperDevPassword().takeIf { it.isNotBlank() }
 
             val boxArtFormat = settingsManager.screenScraperBoxArtFormat()
             val scraperMode = settingsManager.scraperPriority().uppercase()
@@ -397,49 +406,44 @@ class GameDetailViewModel(
             val shouldDownloadVideo = mediaSources.contains("video")
             val shouldDownloadFanart = mediaSources.contains("fanart")
 
-            val (ssJeu, alphaLemuroidData) = coroutineScope {
+            val (screenScraperData, alphaLemuroidData) = coroutineScope {
                 val ssDeferred = async {
-                    if (useScreenScraper && systemEid != null) {
-                        runCatching {
-                            screenScraperClient.scrapeGame(
-                                systemId = game.systemId,
-                                fileName = game.fileName,
-                                fallbackTitle = canonicalTitle.takeIf { it.isNotBlank() } ?: game.fileName,
-                                crc32 = crc,
-                                fileSizeBytes = fileSize,
-                                userId = user,
-                                userPassword = pass,
-                                customDevId = customDevId,
-                                customDevPassword = customDevPass,
-                            )
-                        }.getOrNull()
-                    } else null
+                    if (!useScreenScraper || systemEid == null) return@async null
+                    val jeu = runCatching {
+                        screenScraperClient.scrapeGame(
+                            systemId = game.systemId,
+                            fileName = game.fileName,
+                            fallbackTitle = canonicalTitle,
+                            crc32 = crc,
+                            fileSizeBytes = fileSize,
+                            userId = user,
+                            userPassword = pass,
+                            customDevId = customDevId,
+                            customDevPassword = customDevPassword,
+                        )
+                    }.getOrNull() ?: return@async null
+                    runCatching {
+                        screenScraperClient.parseJeuJsonObject(
+                            jeu = jeu,
+                            systemEid = systemEid,
+                            boxArtFormat = boxArtFormat,
+                            mediaSources = mediaSources,
+                        )
+                    }.getOrNull()
                 }
                 val igdbDeferred = async {
-                    if (useIgdb) {
-                        runCatching {
-                            alphaLemuroidClient.scrapeIgdb(
-                                systemId = game.systemId,
-                                canonicalTitle = canonicalTitle,
-                                fileName = game.fileName,
-                                crc32 = crc,
-                            )
-                        }.getOrNull()
-                    } else null
+                    if (!useIgdb) return@async null
+                    runCatching {
+                        alphaLemuroidClient.scrapeIgdb(
+                            systemId = game.systemId,
+                            canonicalTitle = canonicalTitle,
+                            fileName = game.fileName,
+                            crc32 = crc,
+                        )
+                    }.getOrNull()
                 }
                 ssDeferred.await() to igdbDeferred.await()
             }
-
-            val screenScraperData = if (useScreenScraper && systemEid != null && ssJeu != null) {
-                runCatching {
-                    screenScraperClient.parseJeuJsonObject(
-                        jeu = ssJeu,
-                        systemEid = systemEid,
-                        boxArtFormat = boxArtFormat,
-                        mediaSources = mediaSources,
-                    )
-                }.getOrNull()
-            } else null
 
             val rawAccurateTitle = if (preferIgdb) {
                 alphaLemuroidData?.name?.takeIf { it.isNotBlank() }

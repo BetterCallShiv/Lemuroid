@@ -3,12 +3,11 @@ package com.swordfish.lemuroid.lib.scraper
 import android.content.Context
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.Dispatcher
 import okhttp3.HttpUrl
@@ -42,8 +41,13 @@ class ScreenScraperClient(
         private const val KEY_SOFT_NAME = "ss_cfg_softname"
         private const val KEY_FETCHED_AT = "ss_cfg_stamp"
         private const val KEY_CACHE_TTL_MS = 7L * 24L * 60L * 60L * 1000L
-        private const val MAX_RETRY_ATTEMPTS = 3
-        private val RETRYABLE_HTTP_CODES = setOf(429, 430, 503)
+        private const val MAX_RETRY_ATTEMPTS = 2
+        private const val MAX_ALLOWED_API_THREADS = 5
+        private val RETRYABLE_HTTP_CODES = setOf(429, 503)
+        private val QUOTA_STOP_HTTP_CODES = setOf(401, 430, 431)
+        private val ISO_ROM_EXTENSIONS = setOf(
+            "iso", "chd", "bin", "cue", "pbp", "cso", "ccd", "mdf", "img", "nrg", "gdi", "cdi",
+        )
         private val CONFIG_URLS = listOf(
             "https://api.alphalemuroid.workers.dev/ss/config",
             "https://api.alphalemuroid.indevs.in/ss/config",
@@ -76,8 +80,78 @@ class ScreenScraperClient(
             "x" to "10",
         )
 
-        private val anonApiSemaphore = Semaphore(3)
-        private val userApiSemaphore = Semaphore(5)
+        private class DynamicThreadGate(initialLimit: Int = 1) {
+            private val lock = Any()
+            private var limit = initialLimit.coerceIn(1, MAX_ALLOWED_API_THREADS)
+            private var inUse = 0
+            private val waiters = ArrayDeque<CompletableDeferred<Unit>>()
+
+            suspend fun <T> withPermit(block: suspend () -> T): T {
+                acquire()
+                return try {
+                    block()
+                } finally {
+                    release()
+                }
+            }
+
+            private suspend fun acquire() {
+                val waiter = synchronized(lock) {
+                    if (inUse < limit && waiters.isEmpty()) {
+                        inUse++
+                        null
+                    } else {
+                        CompletableDeferred<Unit>().also { waiters.addLast(it) }
+                    }
+                } ?: return
+
+                try {
+                    waiter.await()
+                } catch (e: CancellationException) {
+                    synchronized(lock) {
+                        val stillQueued = waiters.remove(waiter)
+                        if (!stillQueued && waiter.isCompleted && !waiter.isCancelled) {
+                            if (inUse > 0) inUse--
+                            drainWaitersLocked()
+                        }
+                    }
+                    throw e
+                }
+            }
+
+            private fun release() {
+                synchronized(lock) {
+                    if (inUse > 0) inUse--
+                    drainWaitersLocked()
+                }
+            }
+
+            fun updateLimit(newLimit: Int) {
+                val clamped = newLimit.coerceIn(1, MAX_ALLOWED_API_THREADS)
+                synchronized(lock) {
+                    if (clamped != limit) {
+                        limit = clamped
+                        drainWaitersLocked()
+                    }
+                }
+            }
+
+            private fun drainWaitersLocked() {
+                while (inUse < limit && waiters.isNotEmpty()) {
+                    val next = waiters.removeFirst()
+                    if (next.complete(Unit)) {
+                        inUse++
+                    }
+                }
+            }
+        }
+
+        private val apiThreadGate = DynamicThreadGate(1)
+        private val threadGateKeyLock = Any()
+
+        @Volatile
+        private var lastThreadGateKey: String? = null
+
         private val credsMutex = Mutex()
         private val blockingCredsLock = Any()
 
@@ -104,7 +178,7 @@ class ScreenScraperClient(
                     },
                 )
                 .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
+                .readTimeout(45, TimeUnit.SECONDS)
                 .build()
         }
 
@@ -229,13 +303,17 @@ class ScreenScraperClient(
             return if (user.isNotEmpty() && pass.isNotEmpty()) user to pass else null
         }
 
-        private fun readDevCredsFromPrefs(context: Context): DevCredentials? {
+        private fun readCustomDevCredsFromPrefs(context: Context): DevCredentials? {
             val appPrefs = runCatching { SharedPreferencesHelper.getSharedPreferences(context) }.getOrNull()
             val customId = appPrefs?.getString("screenscraper_devid", "").orEmpty().trim()
             val customPass = appPrefs?.getString("screenscraper_devpassword", "").orEmpty().trim()
-            if (customId.isNotEmpty() && customPass.isNotEmpty()) {
-                return DevCredentials(customId, customPass, DEFAULT_SOFTNAME)
-            }
+            return if (customId.isNotEmpty() && customPass.isNotEmpty()) {
+                DevCredentials(customId, customPass, DEFAULT_SOFTNAME)
+            } else null
+        }
+
+        private fun readDevCredsFromPrefs(context: Context): DevCredentials? {
+            readCustomDevCredsFromPrefs(context)?.let { return it }
 
             val prefs = context.getSharedPreferences(CONFIG_PREFS_NAME, Context.MODE_PRIVATE)
             val stamp = prefs.getLong(KEY_FETCHED_AT, 0L)
@@ -295,6 +373,9 @@ class ScreenScraperClient(
             forceRefresh: Boolean = false,
             client: OkHttpClient = sharedHttpClient,
         ): DevCredentials? {
+            if (context != null) {
+                readCustomDevCredsFromPrefs(context)?.let { return it }
+            }
             val now = System.currentTimeMillis()
             if (!forceRefresh) {
                 val mem = cachedDevCreds
@@ -460,14 +541,19 @@ class ScreenScraperClient(
                         return resp.code to null
                     }
                     val retryAfterSec = resp.header("Retry-After")?.toLongOrNull()
-                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(400L, 5000L)
-                        ?: (600L * (attempt + 1) + Random.nextLong(80L, 320L))
+                    retryDelayMs = if (resp.code == 429) {
+                        retryAfterSec?.times(1000L)?.coerceIn(1000L, 10000L)
+                            ?: (1500L * (attempt + 1) + Random.nextLong(250L, 650L))
+                    } else {
+                        retryAfterSec?.times(1000L)?.coerceIn(600L, 8000L)
+                            ?: (1000L * (attempt + 1) + Random.nextLong(150L, 450L))
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Throwable) {
                 if (attempt == MAX_RETRY_ATTEMPTS) return 0 to null
-                retryDelayMs = 350L * (attempt + 1)
+                retryDelayMs = 450L * (attempt + 1)
             }
             if (retryDelayMs != null) {
                 delay(retryDelayMs)
@@ -476,24 +562,54 @@ class ScreenScraperClient(
         return 0 to null
     }
 
+    private fun syncThreadGateIdentity(creds: DevCredentials, cleanUser: String?) {
+        val gateKey = "${creds.devId}:${cleanUser.orEmpty()}"
+        val switched = synchronized(threadGateKeyLock) {
+            if (lastThreadGateKey != gateKey) {
+                lastThreadGateKey = gateKey
+                true
+            } else {
+                false
+            }
+        }
+        if (switched) {
+            apiThreadGate.updateLimit(1)
+        }
+    }
+
+    private fun syncMaxThreadsFromResponse(json: JSONObject?) {
+        val threads = json
+            ?.optJSONObject("response")
+            ?.optJSONObject("ssuser")
+            ?.optString("maxthreads")
+            ?.trim()
+            ?.toIntOrNull()
+            ?: return
+        if (threads > 0) {
+            apiThreadGate.updateLimit(threads)
+        }
+    }
+
     private suspend fun executeWithCredsRefresh(
-        hasPersonalUser: Boolean,
+        cleanUser: String?,
         customDevId: String?,
         customDevPassword: String?,
         buildUrl: (DevCredentials) -> HttpUrl,
     ): Pair<Int, String?> {
-        val semaphore = if (hasPersonalUser) userApiSemaphore else anonApiSemaphore
-        return semaphore.withPermit {
-            val initialCreds = resolveDevCreds(
-                forceRefresh = false,
-                customDevId = customDevId,
-                customDevPassword = customDevPassword,
-            ) ?: return@withPermit 0 to null
+        val initialCreds = resolveDevCreds(
+            forceRefresh = false,
+            customDevId = customDevId,
+            customDevPassword = customDevPassword,
+        ) ?: return 0 to null
 
+        syncThreadGateIdentity(initialCreds, cleanUser)
+
+        return apiThreadGate.withPermit {
             val result = executeSsGet(buildUrl(initialCreds))
             if (result.first == 403 && customDevId.isNullOrBlank() && customDevPassword.isNullOrBlank()) {
                 val refreshedCreds = resolveDevCreds(forceRefresh = true) ?: return@withPermit result
                 if (refreshedCreds != initialCreds) {
+                    syncThreadGateIdentity(refreshedCreds, cleanUser)
                     return@withPermit executeSsGet(buildUrl(refreshedCreds))
                 }
             }
@@ -516,39 +632,50 @@ class ScreenScraperClient(
         val storedCreds = getUserCredentials(context)
         val cleanUser = userId?.trim()?.takeIf { it.isNotEmpty() } ?: storedCreds?.first
         val cleanPass = userPassword?.trim()?.takeIf { it.isNotEmpty() } ?: storedCreds?.second
-        val hasPersonalUser = cleanUser != null && cleanPass != null
+        val effectiveGateUser = if (cleanUser != null && cleanPass != null) cleanUser else null
         val cleanCrc = crc32?.trim()?.uppercase(Locale.ROOT)?.takeIf { it.isNotEmpty() && it != "0" }
-        val romName = fileName.trim()
-        val cleanFallback = cleanSearchTitle(fallbackTitle ?: romName)
+        val cleanRomName = fileName
+            .trim()
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+        val romExt = cleanRomName.substringAfterLast('.', "").lowercase(Locale.ROOT)
+        val romType = if (romExt in ISO_ROM_EXTENSIONS) "iso" else "rom"
+        val cleanFallback = cleanSearchTitle(fallbackTitle ?: cleanRomName)
 
-        if (romName.isNotEmpty()) {
-            val (_, infoBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+        if (cleanRomName.isNotEmpty()) {
+            val (infoCode, infoBody) = executeWithCredsRefresh(effectiveGateUser, customDevId, customDevPassword) { creds ->
                 buildBaseUrlBuilder(SS_INFO_URL, creds, systemEid, cleanUser, cleanPass).apply {
-                    addQueryParameter("romnom", romName)
-                    addQueryParameter("romtype", "rom")
+                    addQueryParameter("romnom", cleanRomName)
+                    addQueryParameter("romtype", romType)
                     if (cleanCrc != null) addQueryParameter("crc", cleanCrc)
                     if (fileSizeBytes != null && fileSizeBytes > 0L) {
                         addQueryParameter("romtaille", fileSizeBytes.toString())
                     }
                 }.build()
             }
-            val hashJeu = parseJsonObjectSafe(infoBody)?.optJSONObject("response")?.optJSONObject("jeu")
+            if (infoCode in QUOTA_STOP_HTTP_CODES) return@withContext null
+            val infoJson = parseJsonObjectSafe(infoBody)
+            syncMaxThreadsFromResponse(infoJson)
+            val hashJeu = infoJson?.optJSONObject("response")?.optJSONObject("jeu")
             if (hashJeu != null) return@withContext hashJeu
         }
 
-        val searchCandidates = listOf(cleanFallback, cleanSearchTitle(romName))
+        val searchCandidates = listOf(cleanFallback, cleanSearchTitle(cleanRomName))
             .map { it.trim() }
             .filter { it.length >= 2 }
             .distinctBy { it.lowercase(Locale.ROOT) }
 
         var bestMatch: JSONObject? = null
         for (queryTitle in searchCandidates) {
-            val (_, searchBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+            val (searchCode, searchBody) = executeWithCredsRefresh(effectiveGateUser, customDevId, customDevPassword) { creds ->
                 buildBaseUrlBuilder(SS_SEARCH_URL, creds, systemEid, cleanUser, cleanPass)
                     .addQueryParameter("recherche", queryTitle)
                     .build()
             }
-            val jeuxRaw = parseJsonObjectSafe(searchBody)?.optJSONObject("response")?.opt("jeux")
+            if (searchCode in QUOTA_STOP_HTTP_CODES) return@withContext null
+            val searchJson = parseJsonObjectSafe(searchBody)
+            syncMaxThreadsFromResponse(searchJson)
+            val jeuxRaw = searchJson?.optJSONObject("response")?.opt("jeux")
             bestMatch = pickBestScreenScraperMatch(jeuxRaw, queryTitle)
             if (bestMatch != null) break
         }
@@ -557,13 +684,16 @@ class ScreenScraperClient(
         val gameId = bestMatch.optString("id").trim()
         if (gameId.isEmpty()) return@withContext null
 
-        val (_, enrichedBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+        val (enrichedCode, enrichedBody) = executeWithCredsRefresh(effectiveGateUser, customDevId, customDevPassword) { creds ->
             buildBaseUrlBuilder(SS_INFO_URL, creds, systemEid, cleanUser, cleanPass)
                 .addQueryParameter("gameid", gameId)
                 .build()
         }
+        if (enrichedCode in QUOTA_STOP_HTTP_CODES) return@withContext bestMatch
 
-        parseJsonObjectSafe(enrichedBody)?.optJSONObject("response")?.optJSONObject("jeu") ?: bestMatch
+        val enrichedJson = parseJsonObjectSafe(enrichedBody)
+        syncMaxThreadsFromResponse(enrichedJson)
+        enrichedJson?.optJSONObject("response")?.optJSONObject("jeu") ?: bestMatch
     }
 
     @Suppress("UNUSED_PARAMETER")

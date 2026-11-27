@@ -73,12 +73,29 @@ fun Context.openUriInputStream(uri: Uri): InputStream? {
     return contentResolver.openInputStream(uri)
 }
 
+data class RomHashInfo(
+    val crc32: String,
+    val uncompressedBytes: Long?,
+)
+
 fun InputStream.calculateRomCrc32(
+    fileName: String,
+    isArcadeZip: Boolean = false,
+    isZipArchive: Boolean = false,
+    targetEntryName: String? = null,
+): String = calculateRomHashInfo(
+    fileName = fileName,
+    isArcadeZip = isArcadeZip,
+    isZipArchive = isZipArchive,
+    targetEntryName = targetEntryName,
+).crc32
+
+fun InputStream.calculateRomHashInfo(
     @Suppress("UNUSED_PARAMETER") fileName: String,
     isArcadeZip: Boolean = false,
     @Suppress("UNUSED_PARAMETER") isZipArchive: Boolean = false,
     targetEntryName: String? = null,
-): String {
+): RomHashInfo {
     return this.use { rawStream ->
         val pushback = PushbackInputStream(rawStream, 4)
         val header = ByteArray(4)
@@ -93,7 +110,19 @@ fun InputStream.calculateRomCrc32(
             header[3] == 0x04.toByte()
 
         if (isArcadeZip || !hasZipMagic) {
-            return pushback.calculateCrc32().uppercase()
+            val buffer = ByteArray(CRC32_BYTE_ARRAY_SIZE)
+            var totalBytes = 0L
+            val crc = CRC32()
+            var read = pushback.read(buffer)
+            while (read != -1) {
+                crc.update(buffer, 0, read)
+                totalBytes += read
+                read = pushback.read(buffer)
+            }
+            return RomHashInfo(
+                crc32 = crc.value.toStringCRC32().uppercase(),
+                uncompressedBytes = totalBytes.takeIf { it > 0L },
+            )
         }
 
         val buffer = ByteArray(CRC32_BYTE_ARRAY_SIZE)
@@ -130,6 +159,7 @@ fun InputStream.calculateRomCrc32(
 
                         if (matchesTarget) {
                             bestCrc = crc.value.toStringCRC32().uppercase()
+                            bestSize = entryBytes
                             break
                         }
 
@@ -143,7 +173,10 @@ fun InputStream.calculateRomCrc32(
                 entry = zipStream.nextEntry
             }
         }
-        bestCrc ?: ""
+        RomHashInfo(
+            crc32 = bestCrc ?: "",
+            uncompressedBytes = bestSize.takeIf { it > 0L },
+        )
     }
 }
 

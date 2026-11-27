@@ -421,83 +421,117 @@ fun GameDetailScreen(
                     }
                 }.first().measure(rightConstraints)
 
+                val hGapPx = 8.dp.roundToPx()
+                val vGapPx = 6.dp.roundToPx()
+                val coverBottomSlackPx = 8.dp.roundToPx()
                 val availableTagHeight = (coverPlaceable.height - topOffsetPx - headerTextPlaceable.height - textTagGapPx)
                     .coerceAtLeast(0)
+                val maxTagHeight = availableTagHeight + coverBottomSlackPx
 
-                val fullWrapPlaceable = subcompose("tags_full_wrap") {
-                    HeaderTagFlowRow(chips = allChips)
-                }.first().measure(rightConstraints)
+                val tagsPlaceable = if (allChips.isEmpty()) {
+                    null
+                } else {
+                    val chipSizes = allChips.mapIndexed { idx, chip ->
+                        val placeable = subcompose("measure_chip_$idx") {
+                            GameDetailTag(
+                                text = chip.text,
+                                icon = chip.icon,
+                                onClick = chip.onClick,
+                            )
+                        }.first().measure(Constraints())
+                        placeable.width to placeable.height
+                    }
 
-                val tagsPlaceable = if (fullWrapPlaceable.height <= availableTagHeight) {
-                    fullWrapPlaceable
-                } else if (familyChips.isNotEmpty() && genreChips.isNotEmpty()) {
-                    val splitPlaceable = subcompose("tags_split") {
+                    val packedRows = mutableListOf<List<Int>>()
+                    val rowHeights = mutableListOf<Int>()
+                    var currentRow = mutableListOf<Int>()
+                    var currentWidth = 0
+                    var currentHeight = 0
+
+                    for (i in allChips.indices) {
+                        val (w, h) = chipSizes[i]
+                        val neededWidth = if (currentRow.isEmpty()) w else currentWidth + hGapPx + w
+                        if (currentRow.isNotEmpty() && neededWidth > rightWidth) {
+                            packedRows.add(currentRow)
+                            rowHeights.add(currentHeight)
+                            currentRow = mutableListOf(i)
+                            currentWidth = w
+                            currentHeight = h
+                        } else {
+                            currentRow.add(i)
+                            currentWidth = neededWidth
+                            currentHeight = maxOf(currentHeight, h)
+                        }
+                    }
+                    if (currentRow.isNotEmpty()) {
+                        packedRows.add(currentRow)
+                        rowHeights.add(currentHeight)
+                    }
+
+                    var fittingRowCount = 0
+                    var usedHeight = 0
+                    for (r in packedRows.indices) {
+                        val nextHeight = if (fittingRowCount == 0) rowHeights[r] else usedHeight + vGapPx + rowHeights[r]
+                        if (fittingRowCount == 0 || nextHeight <= maxTagHeight) {
+                            usedHeight = nextHeight
+                            fittingRowCount++
+                        } else {
+                            break
+                        }
+                    }
+
+                    val allFit = fittingRowCount >= packedRows.size
+                    val arrangedRows: List<Pair<List<HeaderTagChip>, Boolean>> = if (allFit) {
+                        packedRows.map { indices -> indices.map { allChips[it] } to false }
+                    } else {
+                        val overflowStartRow = (fittingRowCount - 1).coerceAtLeast(0)
+                        val keptRows = packedRows.take(overflowStartRow)
+                            .map { indices -> indices.map { allChips[it] } to false }
+                        val remainingChips = packedRows.drop(overflowStartRow)
+                            .flatten()
+                            .map { allChips[it] }
+                        keptRows + listOf(remainingChips to true)
+                    }
+
+                    subcompose("tags_arranged") {
                         Column(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
                         ) {
-                            HeaderTagFlowRow(chips = infoChips)
-                            HeaderTagScrollRow(chips = familyChips)
-                            HeaderTagScrollRow(chips = genreChips)
+                            arrangedRows.forEach { (rowChips, scrollable) ->
+                                if (scrollable) {
+                                    HeaderTagScrollRow(chips = rowChips)
+                                } else if (rowChips.size == 1) {
+                                    HeaderTagFlowRow(chips = rowChips)
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        rowChips.forEach { chip ->
+                                            GameDetailTag(
+                                                text = chip.text,
+                                                icon = chip.icon,
+                                                onClick = chip.onClick,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }.first().measure(rightConstraints)
-
-                    if (splitPlaceable.height <= availableTagHeight) {
-                        splitPlaceable
-                    } else {
-                        val twoRowPlaceable = subcompose("tags_two_row") {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                HeaderTagScrollRow(chips = infoChips)
-                                HeaderTagScrollRow(chips = familyChips + genreChips)
-                            }
-                        }.first().measure(rightConstraints)
-
-                        if (twoRowPlaceable.height <= availableTagHeight) {
-                            twoRowPlaceable
-                        } else {
-                            subcompose("tags_single_row") {
-                                HeaderTagScrollRow(chips = allChips)
-                            }.first().measure(rightConstraints)
-                        }
-                    }
-                } else {
-                    val secondaryChips = familyChips + genreChips
-                    if (secondaryChips.isNotEmpty()) {
-                        val twoRowPlaceable = subcompose("tags_two_row_single_cat") {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                HeaderTagFlowRow(chips = infoChips)
-                                HeaderTagScrollRow(chips = secondaryChips)
-                            }
-                        }.first().measure(rightConstraints)
-
-                        if (twoRowPlaceable.height <= availableTagHeight) {
-                            twoRowPlaceable
-                        } else {
-                            subcompose("tags_single_row_single_cat") {
-                                HeaderTagScrollRow(chips = allChips)
-                            }.first().measure(rightConstraints)
-                        }
-                    } else {
-                        subcompose("tags_single_row_info") {
-                            HeaderTagScrollRow(chips = allChips)
-                        }.first().measure(rightConstraints)
-                    }
                 }
 
-                val rightTotalHeight = topOffsetPx + headerTextPlaceable.height + textTagGapPx + tagsPlaceable.height
+                val tagsHeight = tagsPlaceable?.height ?: 0
+                val tagsGap = if (tagsPlaceable != null) textTagGapPx else 0
+                val rightTotalHeight = topOffsetPx + headerTextPlaceable.height + tagsGap + tagsHeight
                 val layoutHeight = maxOf(coverPlaceable.height, rightTotalHeight)
                 val rightX = coverPlaceable.width + gapPx
 
                 layout(constraints.maxWidth, layoutHeight) {
                     coverPlaceable.placeRelative(0, 0)
                     headerTextPlaceable.placeRelative(rightX, topOffsetPx)
-                    tagsPlaceable.placeRelative(rightX, topOffsetPx + headerTextPlaceable.height + textTagGapPx)
+                    tagsPlaceable?.placeRelative(rightX, topOffsetPx + headerTextPlaceable.height + tagsGap)
                 }
             }
 
