@@ -60,7 +60,7 @@ class BatchScraperManager(
     private val retrogradeDb: RetrogradeDatabase,
     private val settingsManager: SettingsManager,
 ) {
-    private val screenScraperClient = ScreenScraperClient()
+    private val screenScraperClient = ScreenScraperClient(appContext)
     private val alphaLemuroidClient = AlphaLemuroidClient()
     private val mediaStorageManager = MediaStorageManager(appContext)
     private val libretroDbManager by lazy { LibretroDBManager(appContext) }
@@ -439,6 +439,8 @@ class BatchScraperManager(
             val systemEid = ScreenScraperSystemMapper.getSystemEid(game.systemId)
             val user = settingsManager.screenScraperUser().takeIf { it.isNotBlank() }
             val pass = settingsManager.screenScraperPassword().takeIf { it.isNotBlank() }
+            val customDevId = settingsManager.screenScraperDevId().takeIf { it.isNotBlank() }
+            val customDevPass = settingsManager.screenScraperDevPassword().takeIf { it.isNotBlank() }
             val boxArtFormat = settingsManager.screenScraperBoxArtFormat()
             val scraperMode = settingsManager.scraperPriority().uppercase()
             val useScreenScraper = scraperMode == "SCREENSCRAPER" || scraperMode == "MIXED"
@@ -451,31 +453,49 @@ class BatchScraperManager(
             val shouldDownloadVideo = mediaSources.contains("video")
             val shouldDownloadFanart = mediaSources.contains("fanart")
 
-            val unifiedResult = runCatching {
-                alphaLemuroidClient.scrapeGameUnified(
-                    systemId = game.systemId,
-                    canonicalTitle = canonicalTitle,
-                    fileName = game.fileName,
-                    crc32 = crc,
-                    fileSizeBytes = fileSize,
-                    userId = user,
-                    userPassword = pass,
-                    scraperMode = scraperMode,
-                )
-            }.getOrNull()
+            val (ssJeu, alphaLemuroidData) = coroutineScope {
+                val ssDeferred = async {
+                    if (useScreenScraper && systemEid != null) {
+                        runCatching {
+                            screenScraperClient.scrapeGame(
+                                systemId = game.systemId,
+                                fileName = game.fileName,
+                                fallbackTitle = canonicalTitle.takeIf { it.isNotBlank() } ?: game.fileName,
+                                crc32 = crc,
+                                fileSizeBytes = fileSize,
+                                userId = user,
+                                userPassword = pass,
+                                customDevId = customDevId,
+                                customDevPassword = customDevPass,
+                            )
+                        }.getOrNull()
+                    } else null
+                }
+                val igdbDeferred = async {
+                    if (useIgdb) {
+                        runCatching {
+                            alphaLemuroidClient.scrapeIgdb(
+                                systemId = game.systemId,
+                                canonicalTitle = canonicalTitle,
+                                fileName = game.fileName,
+                                crc32 = crc,
+                            )
+                        }.getOrNull()
+                    } else null
+                }
+                ssDeferred.await() to igdbDeferred.await()
+            }
 
-            val screenScraperData = if (useScreenScraper && systemEid != null && unifiedResult?.screenScraperJeu != null) {
+            val screenScraperData = if (useScreenScraper && systemEid != null && ssJeu != null) {
                 runCatching {
                     screenScraperClient.parseJeuJsonObject(
-                        jeu = unifiedResult.screenScraperJeu!!,
+                        jeu = ssJeu,
                         systemEid = systemEid,
                         boxArtFormat = boxArtFormat,
                         mediaSources = mediaSources,
                     )
                 }.getOrNull()
             } else null
-
-            val alphaLemuroidData = if (useIgdb) unifiedResult?.igdb else null
 
             val rawAccurateTitle = if (preferIgdb) {
                 alphaLemuroidData?.name?.takeIf { it.isNotBlank() }

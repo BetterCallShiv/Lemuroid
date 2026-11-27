@@ -103,15 +103,13 @@ fun GameMenuHomeScreen(
         if (gameMenuRequest.coreConfig.statesSupported) {
             LemuroidSettingsMenuLink(
                 title = { Text(text = stringResource(id = R.string.game_menu_save)) },
-                subtitle = if (isHardcore) { { Text(text = stringResource(id = R.string.game_menu_disabled_in_hardcore)) } } else null,
-                enabled = !isHardcore,
                 icon = {
                     Icon(
                         painterResource(R.drawable.ic_menu_save),
                         contentDescription = stringResource(id = R.string.game_menu_save),
                     )
                 },
-                onClick = { if (!isHardcore) navController.navigateToRoute(GameMenuRoute.SAVE) },
+                onClick = { navController.navigateToRoute(GameMenuRoute.SAVE) },
             )
 
             LemuroidSettingsMenuLink(

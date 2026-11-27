@@ -23,6 +23,7 @@ import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelSideEffects
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelTilt
 import com.swordfish.lemuroid.app.shared.game.viewmodel.GameViewModelTouchControls
 import com.swordfish.lemuroid.app.shared.input.InputDeviceManager
+import com.swordfish.lemuroid.app.shared.retroachievements.RetroAchievementsPreferences
 import com.swordfish.lemuroid.app.shared.rumble.RumbleManager
 import com.swordfish.lemuroid.app.shared.settings.ControllerConfigsManager
 import com.swordfish.lemuroid.app.shared.settings.HapticFeedbackMode
@@ -151,17 +152,23 @@ class BaseGameScreenViewModel(
             retrogradeDb.cheatDao().getCheatsForGame(game.id)
                 .collect { cheats ->
                     currentCheats = cheats
-                    retroGameView.retroGameView?.let { view ->
-                        CheatManager.applyCheats(view, game.systemId, currentCheats)
-                    }
+                    applyCheatsIfAllowed(retroGameView.retroGameView)
                 }
         }
     }
 
+    private fun isHardcoreActive(context: Context = appContext): Boolean {
+        val raPrefs = RetroAchievementsPreferences(context)
+        return raPrefs.enabled && raPrefs.hardcore
+    }
+
+    private fun applyCheatsIfAllowed(view: GLRetroView?) {
+        if (view == null || isHardcoreActive()) return
+        CheatManager.applyCheats(view, game.systemId, currentCheats)
+    }
+
     fun reapplyCheats() {
-        retroGameView.retroGameView?.let { view ->
-            CheatManager.applyCheats(view, game.systemId, currentCheats)
-        }
+        applyCheatsIfAllowed(retroGameView.retroGameView)
     }
 
     private val saves =
@@ -219,8 +226,7 @@ class BaseGameScreenViewModel(
         lifecycle: LifecycleOwner,
     ): GLRetroView {
         val (gameData, result) = retroGameView.createRetroView(context, lifecycle)
-        val raPrefs = com.swordfish.lemuroid.app.shared.retroachievements.RetroAchievementsPreferences(context)
-        val isHardcore = raPrefs.enabled && raPrefs.hardcore
+        val isHardcore = isHardcoreActive(context)
         viewModelScope.launch {
             if (!isHardcore) {
                 gameData.quickSaveData?.let {

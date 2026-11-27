@@ -8,6 +8,7 @@ import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
@@ -32,107 +33,78 @@ class AlphaLemuroidClient(
         .build(),
 ) {
     companion object {
-        private const val API_URL = "https://api.alphalemuroid.indevs.in/scrape"
+        private val API_URLS = listOf(
+            "https://api.alphalemuroid.workers.dev/scrape",
+            "https://api.alphalemuroid.indevs.in/scrape",
+        )
         private const val MAX_RETRY_ATTEMPTS = 2
         private val RETRYABLE_HTTP_CODES = setOf(429, 503)
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-        private val ROM_EXT_REGEX = Regex(
-            "\\.(zip|7z|rar|nes|fds|sfc|smc|fig|swc|gb|gbc|gba|md|smd|gen|bin|cue|iso|chd|pbp|cso|n64|z64|v64|nds|3ds|cia|sms|gg|pce|ccd|ngp|ngc|ws|wsc|a26|a78|lnx|dos)$",
-            RegexOption.IGNORE_CASE,
-        )
-        private val CATALOG_PREFIX_REGEX = Regex("^\\d{3,5}\\s*[-._]\\s*")
-        private val PAREN_TAG_REGEX = Regex("\\s*\\([^)]*\\)")
-        private val BRACKET_TAG_REGEX = Regex("\\s*\\[[^]]*]")
-        private val SEPARATOR_REGEX = Regex("[_\\-]+")
-        private val MULTI_SPACE_REGEX = Regex("\\s+")
     }
 
-    private suspend fun executePostWithRetry(request: Request): String? {
-        for (attempt in 0..MAX_RETRY_ATTEMPTS) {
-            var retryDelayMs: Long? = null
-            try {
-                okHttpClient.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        return response.body?.string()
+    private suspend fun executePostWithRetry(requestBody: RequestBody): String? {
+        for (url in API_URLS) {
+            val request = Request.Builder()
+                .url(url)
+                .header("Content-Type", "application/json")
+                .header("User-Agent", "AlphaLemuroid")
+                .post(requestBody)
+                .build()
+
+            for (attempt in 0..MAX_RETRY_ATTEMPTS) {
+                var retryDelayMs: Long? = null
+                var moveToNextHost = false
+                try {
+                    okHttpClient.newCall(request).execute().use { response ->
+                        if (response.isSuccessful) {
+                            return response.body?.string()
+                        }
+                        if (response.code !in RETRYABLE_HTTP_CODES || attempt == MAX_RETRY_ATTEMPTS) {
+                            if (response.code in 400..499 && response.code != 429) {
+                                return null
+                            }
+                            moveToNextHost = true
+                            return@use
+                        }
+                        val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
+                        retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 5000L)
+                            ?: (500L * (attempt + 1) + Random.nextLong(50L, 250L))
                     }
-                    if (response.code !in RETRYABLE_HTTP_CODES || attempt == MAX_RETRY_ATTEMPTS) {
-                        return null
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Throwable) {
+                    if (attempt == MAX_RETRY_ATTEMPTS) {
+                        moveToNextHost = true
+                    } else {
+                        retryDelayMs = 400L * (attempt + 1)
                     }
-                    val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
-                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 5000L)
-                        ?: (500L * (attempt + 1) + Random.nextLong(50L, 250L))
                 }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Throwable) {
-                if (attempt == MAX_RETRY_ATTEMPTS) return null
-                retryDelayMs = 400L * (attempt + 1)
-            }
-            if (retryDelayMs != null) {
-                delay(retryDelayMs)
+                if (moveToNextHost) break
+                if (retryDelayMs != null) {
+                    delay(retryDelayMs)
+                }
             }
         }
         return null
     }
 
-    data class UnifiedScrapeResult(
-        val igdb: AlphaLemuroidMetadata?,
-        val screenScraperJeu: JSONObject?,
-    )
-
-    suspend fun scrapeGameUnified(
+    suspend fun scrapeIgdb(
         systemId: String,
         canonicalTitle: String?,
         fileName: String,
         crc32: String?,
-        fileSizeBytes: Long?,
-        userId: String?,
-        userPassword: String?,
-        scraperMode: String,
-    ): UnifiedScrapeResult? {
-        val mode = scraperMode.uppercase()
-        val useScreenScraper = mode == "SCREENSCRAPER" || mode == "MIXED"
-        val useIgdb = mode == "IGDB" || mode == "MIXED"
-        val cleanPrimaryTitle = cleanGameTitle(canonicalTitle)
-        val cleanFallbackTitle = cleanGameTitle(fileName).ifBlank { cleanPrimaryTitle }
-
-        return scrapeUnified(
-            crc32 = crc32,
-            title = if (useIgdb) cleanPrimaryTitle.takeIf { it.isNotBlank() } else null,
-            fallbackTitle = cleanFallbackTitle.takeIf { it.isNotBlank() },
-            platformId = IgdbPlatformMapper.getPlatformId(systemId),
-            romName = if (useScreenScraper) fileName else null,
-            systemEid = if (useScreenScraper) ScreenScraperSystemMapper.getSystemEid(systemId) else null,
-            romSize = if (useScreenScraper) fileSizeBytes else null,
-            userId = if (useScreenScraper) userId else null,
-            userPassword = if (useScreenScraper) userPassword else null,
-            source = mode.lowercase(),
-        )
-    }
-
-    suspend fun scrapeUnified(
-        crc32: String? = null,
-        title: String? = null,
-        fallbackTitle: String? = null,
-        platformId: Int? = null,
-        romName: String? = null,
-        systemEid: Int? = null,
-        romSize: Long? = null,
-        userId: String? = null,
-        userPassword: String? = null,
-        source: String = "mixed",
-    ): UnifiedScrapeResult? = withContext(Dispatchers.IO) {
+    ): AlphaLemuroidMetadata? = withContext(Dispatchers.IO) {
         val cleanCrc = crc32?.trim()?.uppercase()?.takeIf { it.isNotBlank() && it != "0" }
-        val cleanTitle = cleanGameTitle(title)
-        val cleanFallback = cleanGameTitle(fallbackTitle)
-        val hasSsParams = systemEid != null && (!romName.isNullOrBlank() || cleanFallback.isNotBlank())
+        val cleanTitle = cleanGameTitle(canonicalTitle)
+        val cleanFallback = cleanGameTitle(fileName).ifBlank { cleanTitle }
+        val platformId = IgdbPlatformMapper.getPlatformId(systemId)
 
-        if (cleanCrc == null && cleanTitle.isBlank() && cleanFallback.isBlank() && !hasSsParams) {
+        if (cleanCrc == null && cleanTitle.isBlank() && cleanFallback.isBlank()) {
             return@withContext null
         }
 
         val jsonBody = JSONObject().apply {
-            put("source", source.lowercase())
+            put("source", "igdb")
             if (!cleanCrc.isNullOrBlank()) {
                 put("crc32", cleanCrc)
             }
@@ -145,38 +117,12 @@ class AlphaLemuroidClient(
             if (platformId != null && platformId > 0) {
                 put("platformId", platformId)
             }
-            if (hasSsParams) {
-                if (!romName.isNullOrBlank()) {
-                    put("romName", romName)
-                }
-                put("systemEid", systemEid)
-                if (romSize != null && romSize > 0L) {
-                    put("romSize", romSize)
-                }
-            }
         }
 
-        val requestBuilder = Request.Builder()
-            .url(API_URL)
-            .header("Content-Type", "application/json")
-            .header("User-Agent", "AlphaLemuroid")
-            .post(jsonBody.toString().toRequestBody(JSON_MEDIA_TYPE))
+        val jsonString = executePostWithRetry(jsonBody.toString().toRequestBody(JSON_MEDIA_TYPE))
+            ?: return@withContext null
 
-        if (!userId.isNullOrBlank() && !userPassword.isNullOrBlank()) {
-            requestBuilder.header("X-SS-User", userId)
-            requestBuilder.header("X-SS-Password", userPassword)
-        }
-
-        val jsonString = executePostWithRetry(requestBuilder.build()) ?: return@withContext null
-
-        runCatching {
-            val root = JSONObject(jsonString)
-            val igdb = if (root.has("name") || root.has("id")) parseResponse(jsonString) else null
-            val ssJeu = root.optJSONObject("screenscraper")
-                ?.optJSONObject("response")
-                ?.optJSONObject("jeu")
-            UnifiedScrapeResult(igdb = igdb, screenScraperJeu = ssJeu)
-        }.getOrNull()
+        parseResponse(jsonString)
     }
 
     suspend fun scrapeMetadata(
@@ -190,6 +136,7 @@ class AlphaLemuroidClient(
         if (cleanCrc == null && cleanTitle.isBlank()) return@withContext null
 
         val jsonBody = JSONObject().apply {
+            put("source", "igdb")
             if (!cleanCrc.isNullOrBlank()) {
                 put("crc32", cleanCrc)
             }
@@ -201,14 +148,8 @@ class AlphaLemuroidClient(
             }
         }
 
-        val request = Request.Builder()
-            .url(API_URL)
-            .header("Content-Type", "application/json")
-            .header("User-Agent", "AlphaLemuroid")
-            .post(jsonBody.toString().toRequestBody(JSON_MEDIA_TYPE))
-            .build()
-
-        val jsonString = executePostWithRetry(request) ?: return@withContext null
+        val jsonString = executePostWithRetry(jsonBody.toString().toRequestBody(JSON_MEDIA_TYPE))
+            ?: return@withContext null
 
         parseResponse(jsonString)
     }
@@ -314,16 +255,5 @@ class AlphaLemuroidClient(
         return list.distinct()
     }
 
-    fun cleanGameTitle(rawTitle: String?): String {
-        if (rawTitle.isNullOrBlank()) return ""
-        return rawTitle
-            .trim()
-            .replace(ROM_EXT_REGEX, "")
-            .replace(CATALOG_PREFIX_REGEX, "")
-            .replace(PAREN_TAG_REGEX, "")
-            .replace(BRACKET_TAG_REGEX, "")
-            .replace(SEPARATOR_REGEX, " ")
-            .replace(MULTI_SPACE_REGEX, " ")
-            .trim()
-    }
+    fun cleanGameTitle(rawTitle: String?): String = ScreenScraperClient.cleanSearchTitle(rawTitle)
 }

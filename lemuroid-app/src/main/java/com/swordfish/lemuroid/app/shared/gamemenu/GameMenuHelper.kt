@@ -49,17 +49,12 @@ object GameMenuHelper {
         val savesOption = screen.findPreference<Preference>(SECTION_SAVE_GAME)
         val loadOption = screen.findPreference<Preference>(SECTION_LOAD_GAME)
 
-        if (isHardcore) {
-            savesOption?.isVisible = true
-            savesOption?.isEnabled = false
-            savesOption?.summary = screen.context.getString(R.string.game_menu_disabled_in_hardcore)
+        savesOption?.isVisible = systemCoreConfig.statesSupported
+        loadOption?.isVisible = systemCoreConfig.statesSupported
 
-            loadOption?.isVisible = true
+        if (isHardcore) {
             loadOption?.isEnabled = false
             loadOption?.summary = screen.context.getString(R.string.game_menu_disabled_in_hardcore)
-        } else {
-            savesOption?.isVisible = systemCoreConfig.statesSupported
-            loadOption?.isVisible = systemCoreConfig.statesSupported
         }
     }
 

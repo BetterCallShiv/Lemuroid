@@ -546,7 +546,7 @@
     <string name="settings_desc_retroachievements_enable">Earn achievements and track progress live while playing supported games</string>
     <string name="settings_title_retroachievements_username">Username</string>
     <string name="settings_title_retroachievements_hardcore">Hardcore Mode</string>
-    <string name="settings_desc_retroachievements_hardcore">Disables save states, rewind and cheats</string>
+    <string name="settings_desc_retroachievements_hardcore">Disables loading save states and cheats</string>
     <string name="dialog_enter_username">Enter RetroAchievements Username</string>
     <string name="ra_achievement_unlocked">ACHIEVEMENT UNLOCKED</string>
     <string name="ra_banner_category">ACHIEVEMENTS</string>

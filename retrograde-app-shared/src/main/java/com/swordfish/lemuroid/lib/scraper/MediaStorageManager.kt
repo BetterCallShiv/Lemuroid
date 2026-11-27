@@ -4,35 +4,85 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.ResponseBody.Companion.toResponseBody
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 class MediaStorageManager(
     private val context: Context,
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
-            val request = chain.request().newBuilder()
+            val original = chain.request()
+            val authorizedUrl = ScreenScraperClient.attachCredentialsIfNeeded(original.url, context)
+            val request = original.newBuilder()
+                .url(authorizedUrl)
                 .header("User-Agent", "AlphaLemuroid")
                 .build()
-            chain.proceed(request)
+            val response = chain.proceed(request)
+            if (original.url.host.contains("screenscraper.fr", ignoreCase = true) && response.isSuccessful) {
+                val contentType = response.header("Content-Type")
+                if (contentType != null && contentType.contains("text/html", ignoreCase = true)) {
+                    response.close()
+                    return@addInterceptor response.newBuilder()
+                        .code(404)
+                        .message("No media available")
+                        .body(ByteArray(0).toResponseBody(null))
+                        .build()
+                }
+            }
+            response
         }
         .dispatcher(
             Dispatcher().apply {
                 maxRequests = 64
-                maxRequestsPerHost = 25
+                maxRequestsPerHost = 12
             },
         )
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build(),
 ) {
+    private suspend fun downloadBytesWithRetry(url: String): ByteArray? {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "AlphaLemuroid")
+            .build()
+        for (attempt in 0..2) {
+            var retryDelayMs: Long? = null
+            try {
+                okHttpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        return response.body?.bytes()
+                    }
+                    if (response.code !in setOf(429, 430, 503) || attempt == 2) {
+                        return null
+                    }
+                    val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
+                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 4000L)
+                        ?: (400L * (attempt + 1) + Random.nextLong(50L, 250L))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                if (attempt == 2) return null
+                retryDelayMs = 300L * (attempt + 1)
+            }
+            if (retryDelayMs != null) {
+                delay(retryDelayMs)
+            }
+        }
+        return null
+    }
     enum class MediaType(val folderName: String) {
         BOXART("boxart"),
         BOXART_BACK("boxart_back"),
@@ -163,16 +213,7 @@ class MediaStorageManager(
             }
         }
 
-        val downloadedBytes = runCatching {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "AlphaLemuroid")
-                .build()
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                response.body?.bytes()
-            }
-        }.getOrNull() ?: return@withContext null
+        val downloadedBytes = downloadBytesWithRetry(url) ?: return@withContext null
 
         if (downloadedBytes.isEmpty()) return@withContext null
 
@@ -286,16 +327,7 @@ class MediaStorageManager(
         if (targetFile.exists() && targetFile.length() > 0L) {
             return@withContext targetFile
         }
-        val downloadedBytes = runCatching {
-            val request = Request.Builder()
-                .url(url)
-                .header("User-Agent", "AlphaLemuroid")
-                .build()
-            okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                response.body?.bytes()
-            }
-        }.getOrNull() ?: return@withContext null
+        val downloadedBytes = downloadBytesWithRetry(url) ?: return@withContext null
         if (downloadedBytes.isEmpty()) return@withContext null
         saveBytesAtomically(downloadedBytes, targetFile)
     }

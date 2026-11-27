@@ -41,12 +41,12 @@ class GameViewModelSaves(
         val autoSave: SaveState?,
     )
 
-    suspend fun saveSlot(index: Int) {
+    private fun isHardcoreActive(): Boolean {
         val raPrefs = RetroAchievementsPreferences(appContext)
-        if (raPrefs.enabled && raPrefs.hardcore) {
-            sideEffects.showToast(appContext.getString(R.string.game_menu_disabled_in_hardcore))
-            return
-        }
+        return raPrefs.enabled && raPrefs.hardcore
+    }
+
+    suspend fun saveSlot(index: Int) {
         getCurrentSaveState()?.let {
             statesManager.setSlotSave(game, it, systemCoreConfig.coreID, index)
             runCatching {
@@ -56,8 +56,7 @@ class GameViewModelSaves(
     }
 
     suspend fun loadSlot(index: Int) {
-        val raPrefs = RetroAchievementsPreferences(appContext)
-        if (raPrefs.enabled && raPrefs.hardcore) {
+        if (isHardcoreActive()) {
             sideEffects.showToast(appContext.getString(R.string.game_menu_disabled_in_hardcore))
             return
         }
@@ -131,8 +130,7 @@ class GameViewModelSaves(
     }
 
     private suspend fun isAutoSaveEnabled(): Boolean {
-        val raPrefs = RetroAchievementsPreferences(appContext)
-        if (raPrefs.enabled && raPrefs.hardcore) {
+        if (isHardcoreActive()) {
             return false
         }
         return systemCoreConfig.statesSupported && settingsManager.autoSave()
@@ -184,6 +182,10 @@ class GameViewModelSaves(
     }
 
     fun loadQuickSave() {
+        if (isHardcoreActive()) {
+            sideEffects.showToast(appContext.getString(R.string.game_menu_disabled_in_hardcore))
+            return
+        }
         loadSaveState(currentQuickSave ?: return)
         sideEffects.showToast(appContext.getString(R.string.game_toast_quick_save_loaded))
     }

@@ -11,6 +11,7 @@ import coil.request.CachePolicy
 import com.swordfish.lemuroid.common.drawable.TextDrawable
 import com.swordfish.lemuroid.common.graphics.ColorUtils
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import com.swordfish.lemuroid.lib.scraper.ScreenScraperClient
 import kotlinx.coroutines.Dispatchers
 import okhttp3.OkHttpClient
 
@@ -45,8 +46,10 @@ object CoverUtils {
                 OkHttpClient.Builder()
                     .addInterceptor { chain ->
                         val original = chain.request()
+                        val authorizedUrl = ScreenScraperClient.attachCredentialsIfNeeded(original.url, applicationContext)
                         val request = if (original.url.host.contains("screenscraper.fr", ignoreCase = true)) {
                             original.newBuilder()
+                                .url(authorizedUrl)
                                 .header("User-Agent", "AlphaLemuroid")
                                 .build()
                         } else {

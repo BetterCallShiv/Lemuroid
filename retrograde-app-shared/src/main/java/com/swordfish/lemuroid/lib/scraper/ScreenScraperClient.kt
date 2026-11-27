@@ -1,10 +1,513 @@
 package com.swordfish.lemuroid.lib.scraper
 
+import android.content.Context
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import okhttp3.Dispatcher
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
-class ScreenScraperClient {
+class ScreenScraperClient(
+    private val context: Context? = null,
+    private val okHttpClient: OkHttpClient = defaultOkHttpClient(),
+) {
+    data class DevCredentials(
+        val devId: String,
+        val devPassword: String,
+        val softName: String = DEFAULT_SOFTNAME,
+    )
+
+    companion object {
+        private const val SS_INFO_URL = "https://neoclone.screenscraper.fr/api2/jeuInfos.php"
+        private const val SS_SEARCH_URL = "https://neoclone.screenscraper.fr/api2/jeuRecherche.php"
+        private const val DEFAULT_SOFTNAME = "AlphaLemuroid"
+        private const val CONFIG_PREFS_NAME = "screenscraper_config_cache"
+        private const val KEY_DEV_ID = "ss_cfg_devid"
+        private const val KEY_DEV_PASS = "ss_cfg_devpassword"
+        private const val KEY_SOFT_NAME = "ss_cfg_softname"
+        private const val KEY_FETCHED_AT = "ss_cfg_stamp"
+        private const val KEY_CACHE_TTL_MS = 7L * 24L * 60L * 60L * 1000L
+        private const val MAX_RETRY_ATTEMPTS = 2
+        private val RETRYABLE_HTTP_CODES = setOf(429, 430, 503)
+        private val CONFIG_URLS = listOf(
+            "https://api.alphalemuroid.workers.dev/ss/config",
+            "https://api.alphalemuroid.indevs.in/ss/config",
+        )
+        private val CREDENTIAL_QUERY_KEYS = setOf("devid", "devpassword", "ssid", "sspassword", "softname")
+
+        private val ROM_EXT_REGEX = Regex(
+            "\\.(zip|7z|rar|nes|fds|sfc|smc|fig|swc|gb|gbc|gba|md|smd|gen|bin|cue|iso|chd|pbp|cso|n64|z64|v64|nds|3ds|cia|sms|gg|pce|ccd|ngp|ngc|ws|wsc|a26|a78|lnx|dos)$",
+            RegexOption.IGNORE_CASE,
+        )
+        private val CATALOG_PREFIX_REGEX = Regex("^\\d{3,5}\\s*[-._]\\s*")
+        private val PAREN_TAG_REGEX = Regex("\\s*\\([^)]*\\)")
+        private val BRACKET_TAG_REGEX = Regex("\\s*\\[[^]]*]")
+        private val SEPARATOR_REGEX = Regex("[_\\-]+")
+        private val MULTI_SPACE_REGEX = Regex("\\s+")
+        private val DIACRITIC_REGEX = Regex("[\\u0300-\\u036f]")
+        private val PUNCTUATION_STRIP_REGEX = Regex("['’:.!,&]")
+        private val WORD_THE_REGEX = Regex("\\bthe\\b")
+        private val NON_ALNUM_REGEX = Regex("[^a-z0-9]+")
+        private val DIGITS_ONLY_REGEX = Regex("^\\d+$")
+        private val ROMAN_MAP = mapOf(
+            "ii" to "2",
+            "iii" to "3",
+            "iv" to "4",
+            "v" to "5",
+            "vi" to "6",
+            "vii" to "7",
+            "viii" to "8",
+            "ix" to "9",
+            "x" to "10",
+        )
+
+        private val anonApiSemaphore = Semaphore(3)
+        private val userApiSemaphore = Semaphore(5)
+        private val credsMutex = Mutex()
+        private val blockingCredsLock = Any()
+
+        @Volatile
+        private var cachedDevCreds: DevCredentials? = null
+
+        @Volatile
+        private var cachedDevCredsStamp: Long = 0L
+
+        private val sharedHttpClient: OkHttpClient by lazy { defaultOkHttpClient() }
+
+        private fun defaultOkHttpClient(): OkHttpClient {
+            return OkHttpClient.Builder()
+                .addInterceptor { chain ->
+                    val request = chain.request().newBuilder()
+                        .header("User-Agent", DEFAULT_SOFTNAME)
+                        .build()
+                    chain.proceed(request)
+                }
+                .dispatcher(
+                    Dispatcher().apply {
+                        maxRequests = 32
+                        maxRequestsPerHost = 12
+                    },
+                )
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .build()
+        }
+
+        fun cleanSearchTitle(raw: String?): String {
+            if (raw.isNullOrBlank()) return ""
+            return raw
+                .trim()
+                .replace(ROM_EXT_REGEX, "")
+                .replace(CATALOG_PREFIX_REGEX, "")
+                .replace(PAREN_TAG_REGEX, "")
+                .replace(BRACKET_TAG_REGEX, "")
+                .replace(SEPARATOR_REGEX, " ")
+                .replace(MULTI_SPACE_REGEX, " ")
+                .trim()
+        }
+
+        internal fun normalizeComparable(raw: String?): String {
+            val cleaned = cleanSearchTitle(raw)
+            if (cleaned.isEmpty()) return ""
+            val decomposed = Normalizer.normalize(cleaned, Normalizer.Form.NFD)
+            return DIACRITIC_REGEX.replace(decomposed, "")
+                .lowercase(Locale.ROOT)
+                .replace(PUNCTUATION_STRIP_REGEX, "")
+                .replace(WORD_THE_REGEX, " ")
+                .replace(NON_ALNUM_REGEX, " ")
+                .replace(MULTI_SPACE_REGEX, " ")
+                .trim()
+        }
+
+        internal fun extractNumberTokens(normalizedTitle: String): String {
+            return normalizedTitle
+                .split(' ')
+                .filter { it.isNotEmpty() }
+                .map { ROMAN_MAP[it] ?: it }
+                .filter { DIGITS_ONLY_REGEX.matches(it) }
+                .joinToString(",")
+        }
+
+        internal fun scoreTitleMatch(queryTitle: String, candidateTitle: String): Int {
+            val target = normalizeComparable(queryTitle)
+            val cand = normalizeComparable(candidateTitle)
+            if (target.isEmpty() || cand.isEmpty() || target.length < 2) return 0
+
+            if (target == cand) return 100
+
+            if (extractNumberTokens(target) != extractNumberTokens(cand)) {
+                return 0
+            }
+
+            val targetSet = target.split(' ').filter { it.isNotEmpty() }.toSet()
+            val candSet = cand.split(' ').filter { it.isNotEmpty() }.toSet()
+            if (targetSet.isEmpty() || candSet.isEmpty()) return 0
+
+            val common = targetSet.count { it in candSet }
+            val targetCoverage = common.toDouble() / targetSet.size.toDouble()
+            val candCoverage = common.toDouble() / candSet.size.toDouble()
+
+            return if (targetCoverage == 1.0 && candCoverage >= 0.75) 85 else 0
+        }
+
+        internal fun pickBestScreenScraperMatch(jeuxRaw: Any?, searchTitle: String): JSONObject? {
+            val list: List<JSONObject> = when (jeuxRaw) {
+                is JSONArray -> (0 until jeuxRaw.length()).mapNotNull { jeuxRaw.optJSONObject(it) }
+                is JSONObject -> listOf(jeuxRaw)
+                else -> return null
+            }
+            if (list.isEmpty()) return null
+
+            var best: JSONObject? = null
+            var bestScore = 0
+
+            for (jeu in list) {
+                val candidateTitles = mutableListOf<String>()
+                val noms = jeu.optJSONArray("noms")
+                if (noms != null) {
+                    for (i in 0 until noms.length()) {
+                        val text = noms.optJSONObject(i)?.optString("text")?.takeIf { it.isNotBlank() }
+                        if (text != null) candidateTitles.add(text)
+                    }
+                }
+                jeu.optString("nom").takeIf { it.isNotBlank() }?.let { candidateTitles.add(it) }
+
+                var jeuScore = 0
+                for (cand in candidateTitles) {
+                    jeuScore = maxOf(jeuScore, scoreTitleMatch(searchTitle, cand))
+                }
+
+                if (jeuScore > bestScore) {
+                    bestScore = jeuScore
+                    best = jeu
+                }
+            }
+
+            return if (bestScore >= 85) best else null
+        }
+
+        fun sanitizeMediaUrl(rawUrl: String): String {
+            val trimmed = rawUrl.trim()
+            val parsed = trimmed.toHttpUrlOrNull() ?: return trimmed
+            if (!parsed.host.contains("screenscraper.fr", ignoreCase = true)) {
+                return trimmed
+            }
+            val builder = parsed.newBuilder()
+            CREDENTIAL_QUERY_KEYS.forEach { builder.removeAllQueryParameters(it) }
+            return builder.build().toString()
+        }
+
+        fun invalidateCachedDevCreds(context: Context? = null) {
+            cachedDevCreds = null
+            cachedDevCredsStamp = 0L
+            context?.getSharedPreferences(CONFIG_PREFS_NAME, Context.MODE_PRIVATE)
+                ?.edit()
+                ?.clear()
+                ?.apply()
+        }
+
+        private fun readDevCredsFromPrefs(context: Context): DevCredentials? {
+            val appPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
+            val customId = appPrefs.getString("screenscraper_devid", "").orEmpty().trim()
+            val customPass = appPrefs.getString("screenscraper_devpassword", "").orEmpty().trim()
+            if (customId.isNotEmpty() && customPass.isNotEmpty()) {
+                return DevCredentials(customId, customPass, DEFAULT_SOFTNAME)
+            }
+
+            val prefs = context.getSharedPreferences(CONFIG_PREFS_NAME, Context.MODE_PRIVATE)
+            val stamp = prefs.getLong(KEY_FETCHED_AT, 0L)
+            val now = System.currentTimeMillis()
+            if (now - stamp >= KEY_CACHE_TTL_MS) return null
+            val devId = prefs.getString(KEY_DEV_ID, "").orEmpty().trim()
+            val devPass = prefs.getString(KEY_DEV_PASS, "").orEmpty().trim()
+            val softName = prefs.getString(KEY_SOFT_NAME, DEFAULT_SOFTNAME).orEmpty().trim().ifBlank { DEFAULT_SOFTNAME }
+            return if (devId.isNotEmpty() && devPass.isNotEmpty()) {
+                DevCredentials(devId, devPass, softName)
+            } else null
+        }
+
+        private fun persistDevCreds(context: Context?, creds: DevCredentials) {
+            val now = System.currentTimeMillis()
+            cachedDevCreds = creds
+            cachedDevCredsStamp = now
+            context?.getSharedPreferences(CONFIG_PREFS_NAME, Context.MODE_PRIVATE)
+                ?.edit()
+                ?.putString(KEY_DEV_ID, creds.devId)
+                ?.putString(KEY_DEV_PASS, creds.devPassword)
+                ?.putString(KEY_SOFT_NAME, creds.softName)
+                ?.putLong(KEY_FETCHED_AT, now)
+                ?.apply()
+        }
+
+        private fun fetchDevCredsBlockingFromNetwork(client: OkHttpClient, context: Context?): DevCredentials? {
+            for (configUrl in CONFIG_URLS) {
+                val parsed = runCatching {
+                    val req = Request.Builder()
+                        .url(configUrl)
+                        .header("User-Agent", DEFAULT_SOFTNAME)
+                        .get()
+                        .build()
+                    client.newCall(req).execute().use { resp ->
+                        if (!resp.isSuccessful) return@use null
+                        val body = resp.body?.string() ?: return@use null
+                        val obj = JSONObject(body)
+                        val devId = obj.optString("devid").trim()
+                        val devPass = obj.optString("devpassword").trim()
+                        val softName = obj.optString("softname").trim().ifBlank { DEFAULT_SOFTNAME }
+                        if (devId.isNotEmpty() && devPass.isNotEmpty()) {
+                            DevCredentials(devId, devPass, softName)
+                        } else null
+                    }
+                }.getOrNull()
+                if (parsed != null) {
+                    persistDevCreds(context, parsed)
+                    return parsed
+                }
+            }
+            return null
+        }
+
+        fun getDevCredsBlocking(
+            context: Context? = null,
+            forceRefresh: Boolean = false,
+            client: OkHttpClient = sharedHttpClient,
+        ): DevCredentials? {
+            val now = System.currentTimeMillis()
+            if (!forceRefresh) {
+                val mem = cachedDevCreds
+                if (mem != null && now - cachedDevCredsStamp < KEY_CACHE_TTL_MS) {
+                    return mem
+                }
+                if (context != null) {
+                    readDevCredsFromPrefs(context)?.let {
+                        cachedDevCreds = it
+                        cachedDevCredsStamp = now
+                        return it
+                    }
+                }
+            }
+            synchronized(blockingCredsLock) {
+                if (!forceRefresh) {
+                    val mem = cachedDevCreds
+                    if (mem != null && System.currentTimeMillis() - cachedDevCredsStamp < KEY_CACHE_TTL_MS) {
+                        return mem
+                    }
+                }
+                return fetchDevCredsBlockingFromNetwork(client, context)
+            }
+        }
+
+        fun attachCredentialsIfNeeded(
+            url: HttpUrl,
+            context: Context? = null,
+            userId: String? = null,
+            userPass: String? = null,
+        ): HttpUrl {
+            if (!url.host.contains("screenscraper.fr", ignoreCase = true) ||
+                !url.encodedPath.contains("mediaJeu.php", ignoreCase = true)
+            ) {
+                return url
+            }
+            val hasDevId = !url.queryParameter("devid").isNullOrBlank() &&
+                !url.queryParameter("devpassword").isNullOrBlank()
+            val creds = if (hasDevId) null else getDevCredsBlocking(context)
+            val appPrefs = context?.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
+            val effectiveUser = userId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: appPrefs?.getString("screenscraper_user", "")?.trim()?.takeIf { it.isNotEmpty() }
+            val effectivePass = userPass?.trim()?.takeIf { it.isNotEmpty() }
+                ?: appPrefs?.getString("screenscraper_password", "")?.trim()?.takeIf { it.isNotEmpty() }
+
+            val builder = url.newBuilder()
+            if (creds != null) {
+                builder.setQueryParameter("devid", creds.devId)
+                builder.setQueryParameter("devpassword", creds.devPassword)
+                if (url.queryParameter("softname").isNullOrBlank()) {
+                    builder.setQueryParameter("softname", creds.softName)
+                }
+            }
+            if (!effectiveUser.isNullOrBlank() && !effectivePass.isNullOrBlank()) {
+                builder.setQueryParameter("ssid", effectiveUser)
+                builder.setQueryParameter("sspassword", effectivePass)
+            }
+            return builder.build()
+        }
+    }
+
+    suspend fun resolveDevCreds(
+        forceRefresh: Boolean = false,
+        customDevId: String? = null,
+        customDevPassword: String? = null,
+    ): DevCredentials? = withContext(Dispatchers.IO) {
+        val customId = customDevId?.trim().orEmpty()
+        val customPass = customDevPassword?.trim().orEmpty()
+        if (customId.isNotEmpty() && customPass.isNotEmpty()) {
+            return@withContext DevCredentials(customId, customPass, DEFAULT_SOFTNAME)
+        }
+        credsMutex.withLock {
+            getDevCredsBlocking(context, forceRefresh = forceRefresh, client = okHttpClient)
+        }
+    }
+
+    suspend fun ensureDevCredsLoaded(): Boolean {
+        return resolveDevCreds(forceRefresh = false) != null
+    }
+
+    private fun buildBaseUrlBuilder(
+        baseUrl: String,
+        creds: DevCredentials,
+        systemEid: Int,
+        userId: String?,
+        userPass: String?,
+    ): HttpUrl.Builder {
+        val builder = baseUrl.toHttpUrlOrNull()!!.newBuilder()
+            .addQueryParameter("devid", creds.devId)
+            .addQueryParameter("devpassword", creds.devPassword)
+            .addQueryParameter("softname", creds.softName)
+            .addQueryParameter("output", "json")
+            .addQueryParameter("systemeid", systemEid.toString())
+        if (!userId.isNullOrBlank() && !userPass.isNullOrBlank()) {
+            builder.addQueryParameter("ssid", userId.trim())
+            builder.addQueryParameter("sspassword", userPass.trim())
+        }
+        return builder
+    }
+
+    private suspend fun executeSsGet(url: HttpUrl): Pair<Int, String?> {
+        for (attempt in 0..MAX_RETRY_ATTEMPTS) {
+            var retryDelayMs: Long? = null
+            try {
+                val req = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", DEFAULT_SOFTNAME)
+                    .get()
+                    .build()
+                okHttpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        return resp.code to resp.body?.string()
+                    }
+                    if (resp.code !in RETRYABLE_HTTP_CODES || attempt == MAX_RETRY_ATTEMPTS) {
+                        return resp.code to null
+                    }
+                    val retryAfterSec = resp.header("Retry-After")?.toLongOrNull()
+                    retryDelayMs = retryAfterSec?.times(1000L)?.coerceIn(300L, 4000L)
+                        ?: (450L * (attempt + 1) + Random.nextLong(50L, 250L))
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                if (attempt == MAX_RETRY_ATTEMPTS) return 0 to null
+                retryDelayMs = 300L * (attempt + 1)
+            }
+            if (retryDelayMs != null) {
+                delay(retryDelayMs)
+            }
+        }
+        return 0 to null
+    }
+
+    private suspend fun executeWithCredsRefresh(
+        hasPersonalUser: Boolean,
+        customDevId: String?,
+        customDevPassword: String?,
+        buildUrl: (DevCredentials) -> HttpUrl,
+    ): String? {
+        val semaphore = if (hasPersonalUser) userApiSemaphore else anonApiSemaphore
+        return semaphore.withPermit {
+            val initialCreds = resolveDevCreds(
+                forceRefresh = false,
+                customDevId = customDevId,
+                customDevPassword = customDevPassword,
+            ) ?: return@withPermit null
+
+            val (code, body) = executeSsGet(buildUrl(initialCreds))
+            if (code == 403 && customDevId.isNullOrBlank() && customDevPassword.isNullOrBlank()) {
+                val refreshedCreds = resolveDevCreds(forceRefresh = true) ?: return@withPermit null
+                if (refreshedCreds != initialCreds) {
+                    val (_, retryBody) = executeSsGet(buildUrl(refreshedCreds))
+                    return@withPermit retryBody
+                }
+            }
+            body
+        }
+    }
+
+    suspend fun scrapeGame(
+        systemId: String,
+        fileName: String,
+        fallbackTitle: String? = null,
+        crc32: String? = null,
+        fileSizeBytes: Long? = null,
+        userId: String? = null,
+        userPassword: String? = null,
+        customDevId: String? = null,
+        customDevPassword: String? = null,
+    ): JSONObject? = withContext(Dispatchers.IO) {
+        val systemEid = ScreenScraperSystemMapper.getSystemEid(systemId) ?: return@withContext null
+        val cleanUser = userId?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanPass = userPassword?.trim()?.takeIf { it.isNotEmpty() }
+        val hasPersonalUser = cleanUser != null && cleanPass != null
+        val cleanCrc = crc32?.trim()?.uppercase(Locale.ROOT)?.takeIf { it.isNotEmpty() && it != "0" }
+        val romName = fileName.trim()
+
+        if (romName.isNotEmpty()) {
+            val infoBody = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+                buildBaseUrlBuilder(SS_INFO_URL, creds, systemEid, cleanUser, cleanPass).apply {
+                    addQueryParameter("romnom", romName)
+                    addQueryParameter("romtype", "rom")
+                    if (cleanCrc != null) addQueryParameter("crc", cleanCrc)
+                    if (fileSizeBytes != null && fileSizeBytes > 0L) {
+                        addQueryParameter("romtaille", fileSizeBytes.toString())
+                    }
+                }.build()
+            }
+            val hashJeu = infoBody?.let {
+                runCatching { JSONObject(it).optJSONObject("response")?.optJSONObject("jeu") }.getOrNull()
+            }
+            if (hashJeu != null) return@withContext hashJeu
+        }
+
+        val cleanFallback = cleanSearchTitle(fallbackTitle ?: romName)
+        if (cleanFallback.length < 2) return@withContext null
+
+        val searchBody = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+            buildBaseUrlBuilder(SS_SEARCH_URL, creds, systemEid, cleanUser, cleanPass)
+                .addQueryParameter("recherche", cleanFallback)
+                .build()
+        } ?: return@withContext null
+
+        val bestMatch = runCatching {
+            val jeuxRaw = JSONObject(searchBody).optJSONObject("response")?.opt("jeux")
+            pickBestScreenScraperMatch(jeuxRaw, cleanFallback)
+        }.getOrNull() ?: return@withContext null
+
+        val gameId = bestMatch.optString("id").trim()
+        if (gameId.isEmpty()) return@withContext null
+
+        val enrichedBody = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+            buildBaseUrlBuilder(SS_INFO_URL, creds, systemEid, cleanUser, cleanPass)
+                .addQueryParameter("gameid", gameId)
+                .build()
+        }
+
+        enrichedBody?.let {
+            runCatching { JSONObject(it).optJSONObject("response")?.optJSONObject("jeu") }.getOrNull()
+        } ?: bestMatch
+    }
+
     @Suppress("UNUSED_PARAMETER")
     fun parseJeuJsonObject(
         jeu: JSONObject,
@@ -110,7 +613,7 @@ class ScreenScraperClient {
         if (mediasArray != null) {
             for (i in 0 until mediasArray.length()) {
                 val m = mediasArray.optJSONObject(i) ?: continue
-                val url = m.optString("url")
+                val url = sanitizeMediaUrl(m.optString("url"))
                 if (url.isNotBlank()) {
                     medias.add(
                         ScreenScraperMedia(
