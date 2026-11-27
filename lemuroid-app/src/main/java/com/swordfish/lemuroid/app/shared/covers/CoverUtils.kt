@@ -47,19 +47,12 @@ object CoverUtils {
                     .addInterceptor { chain ->
                         val original = chain.request()
                         val authorizedUrl = ScreenScraperClient.attachCredentialsIfNeeded(original.url, applicationContext)
-                        val isScraperHost = authorizedUrl.host.contains("screenscraper.fr", ignoreCase = true) ||
-                            authorizedUrl.host.contains("alphalemuroid.", ignoreCase = true)
+                        val isScraperHost = authorizedUrl.host.contains("screenscraper.fr", ignoreCase = true)
                         val request = if (isScraperHost) {
-                            val reqBuilder = original.newBuilder()
+                            original.newBuilder()
                                 .url(authorizedUrl)
                                 .header("User-Agent", "AlphaLemuroid")
-                            if (authorizedUrl.host.contains("alphalemuroid.", ignoreCase = true)) {
-                                ScreenScraperClient.getUserCredentials(applicationContext)?.let { (ssUser, ssPass) ->
-                                    reqBuilder.header("X-SS-User", ssUser)
-                                    reqBuilder.header("X-SS-Password", ssPass)
-                                }
-                            }
-                            reqBuilder.build()
+                                .build()
                         } else {
                             original
                         }

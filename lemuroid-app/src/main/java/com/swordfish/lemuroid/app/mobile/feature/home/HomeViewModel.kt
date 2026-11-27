@@ -168,6 +168,7 @@ class HomeViewModel(
         if (romSizeJob?.isActive == true) return
         romSizeJob = viewModelScope.launch(Dispatchers.IO) {
             val games = runCatching { retrogradeDb.gameDao().selectAllGames() }.getOrDefault(emptyList())
+            if (games.isEmpty()) return@launch
             val semaphore = Semaphore(12)
             val resolved = coroutineScope {
                 games.map { game ->
@@ -184,8 +185,10 @@ class HomeViewModel(
                     bySystem[sysId] = (bySystem[sysId] ?: 0L) + size
                 }
             }
-            SystemRomSizeCache.saveSizes(applicationContext, bySystem)
-            systemRomBytesState.value = bySystem
+            if (bySystem.isNotEmpty()) {
+                SystemRomSizeCache.saveSizes(applicationContext, bySystem)
+                systemRomBytesState.value = bySystem
+            }
         }
     }
 
