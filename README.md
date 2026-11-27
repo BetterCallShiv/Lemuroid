@@ -13,7 +13,7 @@
 
 | <img src="docs/screenshots/home.jpg" width="270" alt="Home Screen"/> | <img src="docs/screenshots/discover.jpg" width="270" alt="Discover & Collections"/> | <img src="docs/screenshots/systems.jpg" width="270" alt="System Grid View"/> |
 |:---:|:---:|:---:|
-| **Continue Playing** | **Collections** | **Grid View & Genre Filters** |
+| **Continue Playing** | **Collections** | **Genre Filters** |
 
 | <img src="docs/screenshots/favorites.jpg" width="270" alt="Favorites Screen"/> | <img src="docs/screenshots/stats.jpg" width="270" alt="Library Stats"/> | <img src="docs/screenshots/details.jpg" width="270" alt="Game Details"/> |
 |:---:|:---:|:---:|
