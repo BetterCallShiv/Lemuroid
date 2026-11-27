@@ -17,15 +17,15 @@
 
 | <img src="docs/screenshots/favorites.jpg" width="270" alt="Favorites Screen"/> | <img src="docs/screenshots/stats.jpg" width="270" alt="Library Stats"/> | <img src="docs/screenshots/details.jpg" width="270" alt="Game Details"/> |
 |:---:|:---:|:---:|
-| **Favorites & Filter Chips** | **Library Statistics Breakdown** | **Rich Game Details & Media** |
+| **Favorites** | **Library Statistics** | **Game Details & Media** |
 
 | <img src="docs/screenshots/details_ra.jpg" width="270" alt="Game Details RA"/> | <img src="docs/screenshots/ra_sheet.jpg" width="270" alt="RetroAchievements Sheet"/> | <img src="docs/screenshots/ra_modal.jpg" width="270" alt="Achievement Details Modal"/> |
 |:---:|:---:|:---:|
-| **RA Progress & File Info** | **Expandable Achievements Sheet** | **Achievement Details Modal** |
+| **RA Progress & File Info** | **Achievements Sheet** | **Achievement Details** |
 
 | <img src="docs/screenshots/ra_banner.jpg" width="270" alt="In-Game Unlock Banner"/> | <img src="docs/screenshots/cheats.jpg" width="270" alt="In-Game Cheat Manager"/> | <img src="docs/screenshots/patches.jpg" width="270" alt="In-Game ROM Patch Manager"/> |
 |:---:|:---:|:---:|
-| **In-Game Unlock Banner** | **In-Game Cheat Manager** | **In-Game ROM Patches** |
+| **Achievement Unlock Banner** | **Cheat Manager** | **ROM Patches** |
 
 | <img src="docs/screenshots/backup_create.jpg" width="270" alt="Create Backup Dialog"/> | <img src="docs/screenshots/backup_progress.jpg" width="270" alt="Backup Progress"/> | <img src="docs/screenshots/restore_success.jpg" width="270" alt="Restore Summary"/> |
 |:---:|:---:|:---:|
@@ -33,7 +33,7 @@
 
 | <img src="docs/screenshots/hud_editor_lynx.jpg" width="270" alt="Advanced HUD Editor Controls"/> | <img src="docs/screenshots/hud_editor_grid.jpg" width="270" alt="HUD Editor Symmetry Grid"/> | <img src="docs/screenshots/hud_custom_n64.jpg" width="270" alt="Custom N64 HUD Layout"/> |
 |:---:|:---:|:---:|
-| **Advanced HUD Editor** | **Symmetry Grid & Snap Mode** | **Custom Saved HUD In-Game** |
+| **Advanced HUD Editor** | **Grid & Snap Mode** | **Custom HUD Testing** |
 
 ---
 
