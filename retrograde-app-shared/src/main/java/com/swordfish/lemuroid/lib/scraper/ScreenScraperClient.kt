@@ -34,6 +34,7 @@ class ScreenScraperClient(
     companion object {
         private const val SS_INFO_URL = "https://neoclone.screenscraper.fr/api2/jeuInfos.php"
         private const val SS_SEARCH_URL = "https://neoclone.screenscraper.fr/api2/jeuRecherche.php"
+        private const val SS_USER_INFO_URL = "https://neoclone.screenscraper.fr/api2/ssuserInfos.php"
         private const val DEFAULT_SOFTNAME = "AlphaLemuroid"
         private const val CONFIG_PREFS_NAME = "screenscraper_config_cache"
         private const val KEY_DEV_ID = "ss_cfg_devid"
@@ -694,6 +695,88 @@ class ScreenScraperClient(
         val enrichedJson = parseJsonObjectSafe(enrichedBody)
         syncMaxThreadsFromResponse(enrichedJson)
         enrichedJson?.optJSONObject("response")?.optJSONObject("jeu") ?: bestMatch
+    }
+
+    sealed interface AccountVerifyResult {
+        data class Success(val username: String, val maxThreads: Int) : AccountVerifyResult
+        data class InvalidCredentials(val message: String? = null) : AccountVerifyResult
+        data class ServerBusy(val httpCode: Int) : AccountVerifyResult
+        data class NetworkError(val message: String? = null) : AccountVerifyResult
+    }
+
+    suspend fun verifyUserCredentials(
+        userId: String,
+        userPassword: String,
+        customDevId: String? = null,
+        customDevPassword: String? = null,
+    ): AccountVerifyResult = withContext(Dispatchers.IO) {
+        val cleanUser = userId.trim()
+        val cleanPass = userPassword.trim()
+        if (cleanUser.isEmpty() || cleanPass.isEmpty()) {
+            return@withContext AccountVerifyResult.InvalidCredentials("Username and password required")
+        }
+
+        val initialCreds = resolveDevCreds(
+            forceRefresh = false,
+            customDevId = customDevId,
+            customDevPassword = customDevPassword,
+        ) ?: return@withContext AccountVerifyResult.NetworkError("Failed to load developer credentials")
+
+        fun executeCheck(creds: DevCredentials): Triple<Int, String?, Throwable?> {
+            val url = SS_USER_INFO_URL.toHttpUrlOrNull()!!.newBuilder()
+                .addQueryParameter("devid", creds.devId)
+                .addQueryParameter("devpassword", creds.devPassword)
+                .addQueryParameter("softname", creds.softName)
+                .addQueryParameter("output", "json")
+                .addQueryParameter("ssid", cleanUser)
+                .addQueryParameter("sspassword", cleanPass)
+                .build()
+            return try {
+                val req = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", DEFAULT_SOFTNAME)
+                    .get()
+                    .build()
+                okHttpClient.newCall(req).execute().use { resp ->
+                    Triple(resp.code, resp.body?.string(), null)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (t: Throwable) {
+                Triple(0, null, t)
+            }
+        }
+
+        var (code, body, err) = executeCheck(initialCreds)
+        val isDevError = code == 403 && body?.contains("devid", ignoreCase = true) == true
+        if (isDevError && customDevId.isNullOrBlank() && customDevPassword.isNullOrBlank()) {
+            val refreshed = resolveDevCreds(forceRefresh = true)
+            if (refreshed != null && refreshed != initialCreds) {
+                val retried = executeCheck(refreshed)
+                code = retried.first
+                body = retried.second
+                err = retried.third
+            }
+        }
+
+        if (code in 200..299) {
+            val json = parseJsonObjectSafe(body)
+            val ssuser = json?.optJSONObject("response")?.optJSONObject("ssuser")
+            if (ssuser != null) {
+                val resolvedName = ssuser.optString("id").trim().ifBlank { cleanUser }
+                val threads = ssuser.optString("maxthreads").trim().toIntOrNull()?.coerceAtLeast(1) ?: 1
+                syncThreadGateIdentity(initialCreds, cleanUser)
+                syncMaxThreadsFromResponse(json)
+                return@withContext AccountVerifyResult.Success(resolvedName, threads)
+            }
+            return@withContext AccountVerifyResult.InvalidCredentials()
+        }
+
+        return@withContext when (code) {
+            400, 403 -> AccountVerifyResult.InvalidCredentials()
+            401, 429, 430, 431, 503 -> AccountVerifyResult.ServerBusy(code)
+            else -> AccountVerifyResult.NetworkError(err?.message ?: if (code > 0) "HTTP $code" else null)
+        }
     }
 
     @Suppress("UNUSED_PARAMETER")

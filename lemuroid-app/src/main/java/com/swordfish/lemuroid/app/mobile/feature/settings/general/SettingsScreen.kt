@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +76,7 @@ import com.swordfish.lemuroid.app.utils.android.stringListResource
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import com.swordfish.lemuroid.lib.scraper.MediaStorageManager
+import com.swordfish.lemuroid.lib.scraper.ScreenScraperClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -621,9 +623,10 @@ private fun ScraperSettings() {
     if (showDialog) {
         var tempUser by remember { mutableStateOf(username) }
         var tempPass by remember { mutableStateOf(password) }
+        var isVerifying by remember { mutableStateOf(false) }
 
         AlertDialog(
-            onDismissRequest = { showDialog = false },
+            onDismissRequest = { if (!isVerifying) showDialog = false },
             title = { Text(text = stringResource(R.string.settings_title_screenscraper_account)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -636,6 +639,7 @@ private fun ScraperSettings() {
                         onValueChange = { tempUser = it },
                         label = { Text(stringResource(R.string.settings_screenscraper_username)) },
                         singleLine = true,
+                        enabled = !isVerifying,
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OutlinedTextField(
@@ -643,28 +647,122 @@ private fun ScraperSettings() {
                         onValueChange = { tempPass = it },
                         label = { Text(stringResource(R.string.settings_screenscraper_password)) },
                         singleLine = true,
+                        enabled = !isVerifying,
                         visualTransformation = PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (isVerifying) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .padding(end = 10.dp)
+                                    .size(20.dp),
+                                strokeWidth = 2.5.dp,
+                            )
+                            Text(
+                                text = stringResource(R.string.ra_dialog_logging_in),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(
+                    enabled = !isVerifying,
                     onClick = {
-                        prefs.edit()
-                            .putString(context.getString(R.string.pref_key_screenscraper_user), tempUser.trim())
-                            .putString(context.getString(R.string.pref_key_screenscraper_password), tempPass.trim())
-                            .apply()
-                        username = tempUser.trim()
-                        password = tempPass.trim()
-                        showDialog = false
+                        val u = tempUser.trim()
+                        val p = tempPass.trim()
+                        if (u.isEmpty() && p.isEmpty()) {
+                            prefs.edit()
+                                .putString(context.getString(R.string.pref_key_screenscraper_user), "")
+                                .putString(context.getString(R.string.pref_key_screenscraper_password), "")
+                                .apply()
+                            username = ""
+                            password = ""
+                            showDialog = false
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.settings_screenscraper_logged_out),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } else if (u.isEmpty() || p.isEmpty()) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.settings_screenscraper_login_failed, "Enter both username and password"),
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        } else {
+                            isVerifying = true
+                            coroutineScope.launch {
+                                val result = ScreenScraperClient(context.applicationContext)
+                                    .verifyUserCredentials(u, p)
+                                isVerifying = false
+                                when (result) {
+                                    is ScreenScraperClient.AccountVerifyResult.Success -> {
+                                        prefs.edit()
+                                            .putString(context.getString(R.string.pref_key_screenscraper_user), u)
+                                            .putString(context.getString(R.string.pref_key_screenscraper_password), p)
+                                            .apply()
+                                        username = u
+                                        password = p
+                                        showDialog = false
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.settings_screenscraper_login_success,
+                                                result.username,
+                                                result.maxThreads,
+                                            ),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                    is ScreenScraperClient.AccountVerifyResult.InvalidCredentials -> {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.settings_screenscraper_login_failed,
+                                                result.message ?: "Invalid username or password",
+                                            ),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                    is ScreenScraperClient.AccountVerifyResult.ServerBusy -> {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.settings_screenscraper_login_failed,
+                                                "Server busy or quota limit (HTTP ${result.httpCode})",
+                                            ),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                    is ScreenScraperClient.AccountVerifyResult.NetworkError -> {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.settings_screenscraper_login_failed,
+                                                result.message ?: "Check your connection",
+                                            ),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                }
+                            }
+                        }
                     },
                 ) {
                     Text(stringResource(R.string.game_menu_save))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) {
+                TextButton(
+                    onClick = { showDialog = false },
+                    enabled = !isVerifying,
+                ) {
                     Text(stringResource(R.string.cancel))
                 }
             },
