@@ -23,7 +23,10 @@ class MediaStorageManager(
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor { chain ->
             val original = chain.request()
-            val authorizedUrl = ScreenScraperClient.attachCredentialsIfNeeded(original.url, context)
+            val authorizedUrl = ScreenScraperClient.attachCredentialsIfNeeded(
+                url = original.url,
+                context = context,
+            )
             val request = original.newBuilder()
                 .url(authorizedUrl)
                 .header("User-Agent", "AlphaLemuroid")
@@ -49,7 +52,7 @@ class MediaStorageManager(
             },
         )
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(45, TimeUnit.SECONDS)
         .build(),
 ) {
     private suspend fun downloadBytesWithRetry(url: String): ByteArray? {
@@ -69,7 +72,7 @@ class MediaStorageManager(
                         refreshedCreds = true
                         ScreenScraperClient.invalidateCachedDevCreds(context)
                         retryDelayMs = 150L
-                    } else if (response.code !in setOf(429, 430, 503) || attempt == 2) {
+                    } else if (response.code !in setOf(429, 503) || attempt == 2) {
                         return null
                     } else {
                         val retryAfterSec = response.header("Retry-After")?.toLongOrNull()
@@ -183,6 +186,7 @@ class MediaStorageManager(
         romBasename: String,
         downloadedUrlMap: MutableMap<String, File>,
         index: Int? = null,
+        overwrite: Boolean = false,
     ): File? = withContext(Dispatchers.IO) {
         if (url.isBlank()) return@withContext null
 
@@ -201,14 +205,14 @@ class MediaStorageManager(
             extension = if (isVideo) "mp4" else "webp",
         )
 
-        if (targetFile.exists() && targetFile.length() > 0) {
+        if (!overwrite && targetFile.exists() && targetFile.length() > 0) {
             downloadedUrlMap[url] = targetFile
             return@withContext targetFile
         }
 
-        if (!isVideo) {
-            val fallbackPng = File(targetFile.parentFile, targetFile.nameWithoutExtension + ".png")
-            val fallbackJpg = File(targetFile.parentFile, targetFile.nameWithoutExtension + ".jpg")
+        val fallbackPng = File(targetFile.parentFile, targetFile.nameWithoutExtension + ".png")
+        val fallbackJpg = File(targetFile.parentFile, targetFile.nameWithoutExtension + ".jpg")
+        if (!overwrite && !isVideo) {
             if (fallbackPng.exists() && fallbackPng.length() > 0) {
                 downloadedUrlMap[url] = fallbackPng
                 return@withContext fallbackPng
@@ -230,6 +234,11 @@ class MediaStorageManager(
         }
 
         if (finalFile != null && finalFile.exists() && finalFile.length() > 0) {
+            if (overwrite && !isVideo) {
+                listOf(targetFile, fallbackPng, fallbackJpg)
+                    .filter { it != finalFile && it.exists() }
+                    .forEach { it.delete() }
+            }
             downloadedUrlMap[url] = finalFile
         }
         finalFile
@@ -322,6 +331,21 @@ class MediaStorageManager(
         return file.takeIf { it.exists() && it.length() > 0L }
     }
 
+    private fun isValidPdfBytes(bytes: ByteArray): Boolean {
+        if (bytes.size < 8) return false
+        val limit = minOf(bytes.size - 4, 1024)
+        for (i in 0..limit) {
+            if (bytes[i] == '%'.code.toByte() &&
+                bytes[i + 1] == 'P'.code.toByte() &&
+                bytes[i + 2] == 'D'.code.toByte() &&
+                bytes[i + 3] == 'F'.code.toByte()
+            ) {
+                return true
+            }
+        }
+        return false
+    }
+
     suspend fun saveOrDownloadManual(
         url: String,
         systemId: String,
@@ -334,7 +358,7 @@ class MediaStorageManager(
             return@withContext targetFile
         }
         val downloadedBytes = downloadBytesWithRetry(url) ?: return@withContext null
-        if (downloadedBytes.isEmpty()) return@withContext null
+        if (!isValidPdfBytes(downloadedBytes)) return@withContext null
         saveBytesAtomically(downloadedBytes, targetFile)
     }
 

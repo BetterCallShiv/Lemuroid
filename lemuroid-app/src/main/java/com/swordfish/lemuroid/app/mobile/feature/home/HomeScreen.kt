@@ -161,6 +161,10 @@ fun HomeScreen(
         onDeleteCollection = { viewModel.deleteCollection(it) },
         onShuffleTopRated = { viewModel.shuffleTopRated() },
         onShuffleDiscovery = { viewModel.shuffleDiscovery() },
+        onLibraryStatsOpened = {
+            viewModel.refreshMediaStats()
+            viewModel.refreshSystemRomSizes()
+        },
     )
 }
 
@@ -183,6 +187,7 @@ private fun HomeScreenContent(
     onDeleteCollection: (GameCollection) -> Unit,
     onShuffleTopRated: () -> Unit,
     onShuffleDiscovery: () -> Unit,
+    onLibraryStatsOpened: () -> Unit,
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var showLibraryStatsDialog by remember { mutableStateOf(false) }
@@ -352,7 +357,10 @@ private fun HomeScreenContent(
         if (!state.showNoGamesCard && state.libraryStats.totalGames > 0) {
             LibraryStatsSummaryCard(
                 stats = state.libraryStats,
-                onClick = { showLibraryStatsDialog = true },
+                onClick = {
+                    onLibraryStatsOpened()
+                    showLibraryStatsDialog = true
+                },
             )
         }
     }
@@ -1297,17 +1305,51 @@ private fun LibraryStatsDialog(
                 }
 
                 if (stats.systemBreakdown.isNotEmpty()) {
+                    val totalRomBytes = remember(stats.systemRomBytes) {
+                        stats.systemRomBytes.values.sum()
+                    }
+                    val totalRomSizeFormatted = remember(totalRomBytes) {
+                        if (totalRomBytes > 0L) {
+                            android.text.format.Formatter.formatShortFileSize(context, totalRomBytes)
+                        } else null
+                    }
                     HorizontalDivider()
-                    Text(
-                        text = stringResource(R.string.stats_systems_breakdown),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.stats_systems_breakdown),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        if (totalRomSizeFormatted != null) {
+                            Text(
+                                text = totalRomSizeFormatted,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         stats.systemBreakdown.forEach { entry ->
                             val systemLabel = GameSystem.findById(entry.systemId)
                                 ?.let { stringResource(it.titleResId) }
                                 ?: entry.systemId.uppercase()
+                            val systemRomBytes = stats.systemRomBytes[entry.systemId] ?: 0L
+                            val rightMetric = remember(entry.count, systemRomBytes) {
+                                if (systemRomBytes > 0L) {
+                                    val sizeLabel = android.text.format.Formatter.formatShortFileSize(
+                                        context,
+                                        systemRomBytes,
+                                    )
+                                    "${entry.count} ($sizeLabel)"
+                                } else {
+                                    entry.count.toString()
+                                }
+                            }
                             val fraction = entry.count.toFloat() / maxSystemCount.toFloat()
                             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Row(
@@ -1323,7 +1365,7 @@ private fun LibraryStatsDialog(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = entry.count.toString(),
+                                        text = rightMetric,
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.SemiBold,
                                     )

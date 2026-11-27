@@ -1,6 +1,7 @@
 package com.swordfish.lemuroid.lib.scraper
 
 import android.content.Context
+import com.swordfish.lemuroid.lib.preferences.SharedPreferencesHelper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -42,7 +43,7 @@ class ScreenScraperClient(
         private const val KEY_FETCHED_AT = "ss_cfg_stamp"
         private const val KEY_CACHE_TTL_MS = 7L * 24L * 60L * 60L * 1000L
         private const val MAX_RETRY_ATTEMPTS = 2
-        private val RETRYABLE_HTTP_CODES = setOf(429, 430, 503)
+        private val RETRYABLE_HTTP_CODES = setOf(429, 503)
         private val CONFIG_URLS = listOf(
             "https://api.alphalemuroid.workers.dev/ss/config",
             "https://api.alphalemuroid.indevs.in/ss/config",
@@ -220,10 +221,18 @@ class ScreenScraperClient(
                 ?.apply()
         }
 
+        fun getUserCredentials(context: Context?): Pair<String, String>? {
+            val ctx = context ?: return null
+            val appPrefs = runCatching { SharedPreferencesHelper.getSharedPreferences(ctx) }.getOrNull() ?: return null
+            val user = appPrefs.getString("screenscraper_user", "").orEmpty().trim()
+            val pass = appPrefs.getString("screenscraper_password", "").orEmpty().trim()
+            return if (user.isNotEmpty() && pass.isNotEmpty()) user to pass else null
+        }
+
         private fun readDevCredsFromPrefs(context: Context): DevCredentials? {
-            val appPrefs = context.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
-            val customId = appPrefs.getString("screenscraper_devid", "").orEmpty().trim()
-            val customPass = appPrefs.getString("screenscraper_devpassword", "").orEmpty().trim()
+            val appPrefs = runCatching { SharedPreferencesHelper.getSharedPreferences(context) }.getOrNull()
+            val customId = appPrefs?.getString("screenscraper_devid", "").orEmpty().trim()
+            val customPass = appPrefs?.getString("screenscraper_devpassword", "").orEmpty().trim()
             if (customId.isNotEmpty() && customPass.isNotEmpty()) {
                 return DevCredentials(customId, customPass, DEFAULT_SOFTNAME)
             }
@@ -320,6 +329,11 @@ class ScreenScraperClient(
             }
         }
 
+        fun resolvePlayableVideoUrl(rawUrl: String, context: Context? = null): String {
+            val parsed = rawUrl.trim().toHttpUrlOrNull() ?: return rawUrl
+            return attachCredentialsIfNeeded(parsed, context).toString()
+        }
+
         fun attachCredentialsIfNeeded(
             url: HttpUrl,
             context: Context? = null,
@@ -358,11 +372,9 @@ class ScreenScraperClient(
             val hasDevId = !targetUrl.queryParameter("devid").isNullOrBlank() &&
                 !targetUrl.queryParameter("devpassword").isNullOrBlank()
             val creds = if (hasDevId) null else getDevCredsBlocking(context)
-            val appPrefs = context?.getSharedPreferences("${context.packageName}_preferences", Context.MODE_PRIVATE)
-            val effectiveUser = userId?.trim()?.takeIf { it.isNotEmpty() }
-                ?: appPrefs?.getString("screenscraper_user", "")?.trim()?.takeIf { it.isNotEmpty() }
-            val effectivePass = userPass?.trim()?.takeIf { it.isNotEmpty() }
-                ?: appPrefs?.getString("screenscraper_password", "")?.trim()?.takeIf { it.isNotEmpty() }
+            val storedUserCreds = getUserCredentials(context)
+            val effectiveUser = userId?.trim()?.takeIf { it.isNotEmpty() } ?: storedUserCreds?.first
+            val effectivePass = userPass?.trim()?.takeIf { it.isNotEmpty() } ?: storedUserCreds?.second
 
             val builder = targetUrl.newBuilder()
             if (creds != null) {
@@ -457,24 +469,23 @@ class ScreenScraperClient(
         customDevId: String?,
         customDevPassword: String?,
         buildUrl: (DevCredentials) -> HttpUrl,
-    ): String? {
+    ): Pair<Int, String?> {
         val semaphore = if (hasPersonalUser) userApiSemaphore else anonApiSemaphore
         return semaphore.withPermit {
             val initialCreds = resolveDevCreds(
                 forceRefresh = false,
                 customDevId = customDevId,
                 customDevPassword = customDevPassword,
-            ) ?: return@withPermit null
+            ) ?: return@withPermit 0 to null
 
-            val (code, body) = executeSsGet(buildUrl(initialCreds))
-            if (code == 403 && customDevId.isNullOrBlank() && customDevPassword.isNullOrBlank()) {
-                val refreshedCreds = resolveDevCreds(forceRefresh = true) ?: return@withPermit null
+            val result = executeSsGet(buildUrl(initialCreds))
+            if (result.first == 403 && customDevId.isNullOrBlank() && customDevPassword.isNullOrBlank()) {
+                val refreshedCreds = resolveDevCreds(forceRefresh = true) ?: return@withPermit result
                 if (refreshedCreds != initialCreds) {
-                    val (_, retryBody) = executeSsGet(buildUrl(refreshedCreds))
-                    return@withPermit retryBody
+                    return@withPermit executeSsGet(buildUrl(refreshedCreds))
                 }
             }
-            body
+            result
         }
     }
 
@@ -490,14 +501,16 @@ class ScreenScraperClient(
         customDevPassword: String? = null,
     ): JSONObject? = withContext(Dispatchers.IO) {
         val systemEid = ScreenScraperSystemMapper.getSystemEid(systemId) ?: return@withContext null
-        val cleanUser = userId?.trim()?.takeIf { it.isNotEmpty() }
-        val cleanPass = userPassword?.trim()?.takeIf { it.isNotEmpty() }
+        val storedCreds = getUserCredentials(context)
+        val cleanUser = userId?.trim()?.takeIf { it.isNotEmpty() } ?: storedCreds?.first
+        val cleanPass = userPassword?.trim()?.takeIf { it.isNotEmpty() } ?: storedCreds?.second
         val hasPersonalUser = cleanUser != null && cleanPass != null
         val cleanCrc = crc32?.trim()?.uppercase(Locale.ROOT)?.takeIf { it.isNotEmpty() && it != "0" }
         val romName = fileName.trim()
+        val cleanFallback = cleanSearchTitle(fallbackTitle ?: romName)
 
         if (romName.isNotEmpty()) {
-            val infoBody = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+            val (infoCode, infoBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
                 buildBaseUrlBuilder(SS_INFO_URL, creds, systemEid, cleanUser, cleanPass).apply {
                     addQueryParameter("romnom", romName)
                     addQueryParameter("romtype", "rom")
@@ -507,20 +520,25 @@ class ScreenScraperClient(
                     }
                 }.build()
             }
+            if (infoCode == 430) {
+                return@withContext null
+            }
             val hashJeu = infoBody?.let {
                 runCatching { JSONObject(it).optJSONObject("response")?.optJSONObject("jeu") }.getOrNull()
             }
             if (hashJeu != null) return@withContext hashJeu
         }
 
-        val cleanFallback = cleanSearchTitle(fallbackTitle ?: romName)
         if (cleanFallback.length < 2) return@withContext null
 
-        val searchBody = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+        val (searchCode, searchBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
             buildBaseUrlBuilder(SS_SEARCH_URL, creds, systemEid, cleanUser, cleanPass)
                 .addQueryParameter("recherche", cleanFallback)
                 .build()
-        } ?: return@withContext null
+        }
+        if (searchCode == 430 || searchBody == null) {
+            return@withContext null
+        }
 
         val bestMatch = runCatching {
             val jeuxRaw = JSONObject(searchBody).optJSONObject("response")?.opt("jeux")
@@ -530,7 +548,7 @@ class ScreenScraperClient(
         val gameId = bestMatch.optString("id").trim()
         if (gameId.isEmpty()) return@withContext null
 
-        val enrichedBody = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
+        val (_, enrichedBody) = executeWithCredsRefresh(hasPersonalUser, customDevId, customDevPassword) { creds ->
             buildBaseUrlBuilder(SS_INFO_URL, creds, systemEid, cleanUser, cleanPass)
                 .addQueryParameter("gameid", gameId)
                 .build()

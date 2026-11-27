@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import java.io.File
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import coil.imageLoader
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.common.kotlin.calculateRomCrc32
 import com.swordfish.lemuroid.common.kotlin.openUriInputStream
@@ -498,7 +499,7 @@ class GameDetailViewModel(
                 val boxArtDeferred = async {
                     val local = rawBoxArtUrl?.let {
                         mediaSemaphore.withPermit {
-                            mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BOXART, romBasename, downloadedUrlMap)
+                            mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BOXART, romBasename, downloadedUrlMap, overwrite = force)
                         }
                     }
                     mediaStorageManager.toFileUri(local) ?: rawBoxArtUrl
@@ -508,7 +509,7 @@ class GameDetailViewModel(
                     if (shouldDownloadBanner) {
                         val local = rawBannerUrl?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BANNERS, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BANNERS, romBasename, downloadedUrlMap, overwrite = force)
                             }
                         }
                         mediaStorageManager.toFileUri(local) ?: rawBannerUrl ?: existingBanner
@@ -521,7 +522,7 @@ class GameDetailViewModel(
                     if (shouldDownloadFanart) {
                         rawFanartUrl?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.FANART, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.FANART, romBasename, downloadedUrlMap, overwrite = force)
                             }
                         }
                     }
@@ -531,7 +532,7 @@ class GameDetailViewModel(
                     if (shouldDownloadBanner || shouldDownloadFanart) {
                         val local = rawLogoUrl?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.LOGOS, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.LOGOS, romBasename, downloadedUrlMap, overwrite = force)
                             }
                         }
                         mediaStorageManager.toFileUri(local) ?: rawLogoUrl ?: existingLogo
@@ -545,7 +546,7 @@ class GameDetailViewModel(
                         val isTitle = shotUrl.contains("sstitle", ignoreCase = true) || shotUrl.contains("title", ignoreCase = true)
                         val cat = if (isTitle) MediaStorageManager.MediaType.TITLES else MediaStorageManager.MediaType.SCREENSHOTS
                         val localShot = mediaSemaphore.withPermit {
-                            mediaStorageManager.saveOrDownloadMedia(shotUrl, systemId, cat, romBasename, downloadedUrlMap, index = index + 1)
+                            mediaStorageManager.saveOrDownloadMedia(shotUrl, systemId, cat, romBasename, downloadedUrlMap, index = index + 1, overwrite = force)
                         }
                         mediaStorageManager.toFileUri(localShot) ?: shotUrl
                     }
@@ -555,7 +556,7 @@ class GameDetailViewModel(
                     if (shouldDownloadVideo) {
                         val local = rawVideoUrl?.takeIf { it.isNotBlank() }?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.VIDEOS, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.VIDEOS, romBasename, downloadedUrlMap, overwrite = force)
                             }
                         }
                         mediaStorageManager.toFileUri(local) ?: rawVideoUrl ?: existingVideo
@@ -642,7 +643,7 @@ class GameDetailViewModel(
                     bannerUrl = finalBannerUri,
                     logoUrl = finalLogoUri,
                     boxArtFrontUrl = finalBoxArtUri ?: existingBoxArt ?: game.coverFrontUrl,
-                    boxArtBackUrl = finalBackBoxArtUri ?: existingBackBoxArt ?: screenScraperData?.boxArtBackUrl,
+                    boxArtBackUrl = finalBackBoxArtUri ?: if (force) (screenScraperData?.boxArtBackUrl ?: existingBackBoxArt) else (existingBackBoxArt ?: screenScraperData?.boxArtBackUrl),
                     screenshotUrlsJson = screenScraperClient.serializeScreenshots(mergedScreenshotUris),
                     videoUrl = finalVideoUri,
                     families = screenScraperData?.families ?: existingDetails?.families,
@@ -665,6 +666,9 @@ class GameDetailViewModel(
                         coverFrontUrl = if (shouldUpdateCover) finalBoxArtUri else game.coverFrontUrl,
                     )
                     retrogradeDb.gameDao().update(listOf(updatedGame))
+                }
+                if (force) {
+                    appContext.imageLoader.memoryCache?.clear()
                 }
             } else {
                 

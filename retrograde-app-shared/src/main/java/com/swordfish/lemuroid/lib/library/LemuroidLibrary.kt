@@ -62,13 +62,20 @@ class LemuroidLibrary(
     suspend fun indexLibrary() {
         val startedAtMs = System.currentTimeMillis()
         val newlyInsertedGameIds = Collections.synchronizedSet(mutableSetOf<Int>())
+        val systemSizes = mutableMapOf<String, Long>()
+        var completedCleanly = false
 
         try {
-            indexProviders(startedAtMs, newlyInsertedGameIds)
+            indexProviders(startedAtMs, newlyInsertedGameIds, systemSizes)
+            completedCleanly = true
         } catch (e: Throwable) {
             Timber.e(e, "Library indexing stopped due to exception")
         } finally {
             cleanUp(startedAtMs, newlyInsertedGameIds)
+            if (completedCleanly) {
+                val snapshot = synchronized(systemSizes) { HashMap(systemSizes) }
+                SystemRomSizeCache.saveSizes(appContext, snapshot)
+            }
         }
 
         val executionTime = System.currentTimeMillis() - startedAtMs
@@ -79,11 +86,12 @@ class LemuroidLibrary(
     private suspend fun indexProviders(
         startedAtMs: Long,
         newlyInsertedGameIds: MutableSet<Int>,
+        systemSizes: MutableMap<String, Long>,
     ) {
         val gameMetadata = gameMetadataProvider.get()
         val enabledProviders = storageProviderRegistry.get().enabledProviders
         enabledProviders.asFlow()
-            .flatMapConcat { indexSingleProvider(it, startedAtMs, gameMetadata, newlyInsertedGameIds) }
+            .flatMapConcat { indexSingleProvider(it, startedAtMs, gameMetadata, newlyInsertedGameIds, systemSizes) }
             .collect()
     }
 
@@ -93,11 +101,12 @@ class LemuroidLibrary(
         startedAtMs: Long,
         gameMetadata: GameMetadataProvider,
         newlyInsertedGameIds: MutableSet<Int>,
+        systemSizes: MutableMap<String, Long>,
     ): Flow<Unit> {
         return provider.listBaseStorageFiles()
             .flatMapConcat { StorageFilesMerger.mergeDataFiles(provider, it).asFlow() }
             .batchWithSizeAndTime(MAX_BUFFER_SIZE, MAX_TIME)
-            .flatMapMerge { processBatch(it, provider, startedAtMs, gameMetadata, newlyInsertedGameIds) }
+            .flatMapMerge { processBatch(it, provider, startedAtMs, gameMetadata, newlyInsertedGameIds, systemSizes) }
     }
 
     private suspend fun processBatch(
@@ -106,17 +115,18 @@ class LemuroidLibrary(
         startedAtMs: Long,
         gameMetadata: GameMetadataProvider,
         newlyInsertedGameIds: MutableSet<Int>,
+        systemSizes: MutableMap<String, Long>,
     ) = flow<Unit> {
         val entries = batch.map { fetchEntriesFromDatabase(it) }
 
         val existingEntries = entries.filterIsInstance<ScanEntry.GameFile>()
-        handleExistingEntries(existingEntries, startedAtMs)
+        handleExistingEntries(existingEntries, startedAtMs, systemSizes)
 
         val newEntries =
             entries.filterIsInstance<ScanEntry.File>()
                 .map { buildEntryFromMetadata(it.file, provider, gameMetadata, startedAtMs) }
 
-        handleNewEntries(newEntries, startedAtMs, provider, newlyInsertedGameIds)
+        handleNewEntries(newEntries, startedAtMs, provider, newlyInsertedGameIds, systemSizes)
     }
 
     private fun fetchEntriesFromDatabase(storageFile: GroupedStorageFiles): ScanEntry {
@@ -136,12 +146,30 @@ class LemuroidLibrary(
         }
     }
 
+    private fun recordSystemSizes(
+        entries: List<ScanEntry.GameFile>,
+        systemSizes: MutableMap<String, Long>,
+    ) {
+        if (entries.isEmpty()) return
+        synchronized(systemSizes) {
+            for (entry in entries) {
+                val bytes = entry.file.allFiles().sumOf { it.size.coerceAtLeast(0L) }
+                if (bytes > 0L) {
+                    val sysId = entry.game.systemId
+                    systemSizes[sysId] = (systemSizes[sysId] ?: 0L) + bytes
+                }
+            }
+        }
+    }
+
     private fun handleExistingEntries(
         entries: List<ScanEntry.GameFile>,
         startedAtMs: Long,
+        systemSizes: MutableMap<String, Long>,
     ) {
         updateGames(entries, startedAtMs)
         updateDataFiles(entries, startedAtMs)
+        recordSystemSizes(entries, systemSizes)
     }
 
     private fun updateGames(
@@ -192,6 +220,7 @@ class LemuroidLibrary(
         startedAtMs: Long,
         provider: StorageProvider,
         newlyInsertedGameIds: MutableSet<Int>,
+        systemSizes: MutableMap<String, Long>,
     ) {
         val gameFiles =
             entries
@@ -202,7 +231,7 @@ class LemuroidLibrary(
                 .filterIsInstance<ScanEntry.File>()
                 .flatMap { it.file.allFiles() }
 
-        handleNewGames(gameFiles, startedAtMs, newlyInsertedGameIds)
+        handleNewGames(gameFiles, startedAtMs, newlyInsertedGameIds, systemSizes)
         handleUnknownFiles(provider, unknownFiles, startedAtMs)
     }
 
@@ -210,7 +239,9 @@ class LemuroidLibrary(
         pairs: List<ScanEntry.GameFile>,
         startedAtMs: Long,
         newlyInsertedGameIds: MutableSet<Int>,
+        systemSizes: MutableMap<String, Long>,
     ) {
+        recordSystemSizes(pairs, systemSizes)
         val games =
             pairs
                 .map { it.game }

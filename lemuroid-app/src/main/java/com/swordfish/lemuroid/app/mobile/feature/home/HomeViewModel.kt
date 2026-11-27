@@ -3,7 +3,9 @@ package com.swordfish.lemuroid.app.mobile.feature.home
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -13,6 +15,7 @@ import com.swordfish.lemuroid.app.shared.settings.StorageFrameworkPickerLauncher
 import com.swordfish.lemuroid.lib.core.CoresSelection
 import com.swordfish.lemuroid.lib.library.CoreID
 import com.swordfish.lemuroid.lib.library.SystemID
+import com.swordfish.lemuroid.lib.library.SystemRomSizeCache
 import com.swordfish.lemuroid.lib.library.db.RetrogradeDatabase
 import com.swordfish.lemuroid.lib.library.db.dao.LibraryStatsRaw
 import com.swordfish.lemuroid.lib.library.db.dao.SystemCount
@@ -24,6 +27,10 @@ import com.swordfish.lemuroid.lib.scraper.MediaStorageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -34,6 +41,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import java.io.File
 
 @OptIn(FlowPreview::class)
 class HomeViewModel(
@@ -70,6 +80,7 @@ class HomeViewModel(
         val mediaStorageBytes: Long = 0L,
         val mediaFileCount: Int = 0,
         val systemBreakdown: List<SystemCount> = emptyList(),
+        val systemRomBytes: Map<String, Long> = emptyMap(),
     )
 
     data class UIState(
@@ -99,13 +110,19 @@ class HomeViewModel(
         val raw: LibraryStatsRaw,
         val systems: List<SystemCount>,
         val mediaStats: MediaStorageManager.MediaStorageStats,
+        val systemRomBytes: Map<String, Long>,
         val topRatedGames: List<Game>,
         val ratingsByGameId: Map<Int, Float>,
     )
 
+    private val applicationContext = appContext.applicationContext
     private val sharedPreferences = SharedPreferencesHelper.getSharedPreferences(appContext)
     private val mediaStorageManager = MediaStorageManager(appContext)
     private val mediaStatsState = MutableStateFlow(MediaStorageManager.MediaStorageStats())
+    private val systemRomBytesState = MutableStateFlow<Map<String, Long>>(
+        SystemRomSizeCache.getSizes(applicationContext) ?: emptyMap(),
+    )
+    private var romSizeJob: Job? = null
     private val discoveryShuffleSeed = MutableStateFlow(0)
     private val topRatedShuffleSeed = MutableStateFlow(0)
     private val microphonePermissionEnabledState = MutableStateFlow(true)
@@ -131,6 +148,7 @@ class HomeViewModel(
         notificationsPermissionEnabledState.value = isNotificationsPermissionGranted(context)
         microphonePermissionEnabledState.value = isMicrophonePermissionGranted(context)
         refreshMediaStats()
+        refreshSystemRomSizes()
     }
 
     fun refreshMediaStats() {
@@ -138,6 +156,68 @@ class HomeViewModel(
             mediaStatsState.value = runCatching {
                 mediaStorageManager.calculateStorageStats()
             }.getOrDefault(MediaStorageManager.MediaStorageStats())
+        }
+    }
+
+    fun refreshSystemRomSizes() {
+        val cached = SystemRomSizeCache.getSizes(applicationContext)
+        if (cached != null) {
+            systemRomBytesState.value = cached
+            return
+        }
+        if (romSizeJob?.isActive == true) return
+        romSizeJob = viewModelScope.launch(Dispatchers.IO) {
+            val games = runCatching { retrogradeDb.gameDao().selectAllGames() }.getOrDefault(emptyList())
+            val semaphore = Semaphore(12)
+            val resolved = coroutineScope {
+                games.map { game ->
+                    async {
+                        semaphore.withPermit {
+                            game.systemId to resolveRomFileSizeBytes(game.fileUri)
+                        }
+                    }
+                }.awaitAll()
+            }
+            val bySystem = HashMap<String, Long>()
+            for ((sysId, size) in resolved) {
+                if (size > 0L) {
+                    bySystem[sysId] = (bySystem[sysId] ?: 0L) + size
+                }
+            }
+            SystemRomSizeCache.saveSizes(applicationContext, bySystem)
+            systemRomBytesState.value = bySystem
+        }
+    }
+
+    private fun resolveRomFileSizeBytes(uriString: String): Long {
+        val uri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return 0L
+        return when (uri.scheme) {
+            "file", null -> {
+                val path = uri.path ?: uriString.takeIf { it.startsWith("/") }
+                path?.let { File(it).takeIf(File::exists)?.length() } ?: 0L
+            }
+            "content" -> {
+                val queried = runCatching {
+                    applicationContext.contentResolver.query(
+                        uri,
+                        arrayOf(OpenableColumns.SIZE),
+                        null,
+                        null,
+                        null,
+                    )?.use { cursor ->
+                        val colIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (colIdx >= 0 && cursor.moveToFirst() && !cursor.isNull(colIdx)) {
+                            cursor.getLong(colIdx)
+                        } else null
+                    }
+                }.getOrNull()?.takeIf { it > 0L }
+                queried ?: runCatching {
+                    applicationContext.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                        pfd.statSize.takeIf { it > 0L }
+                    }
+                }.getOrNull() ?: 0L
+            }
+            else -> 0L
         }
     }
 
@@ -224,6 +304,7 @@ class HomeViewModel(
             mediaStorageBytes = statsBundle.mediaStats.totalBytes,
             mediaFileCount = statsBundle.mediaStats.fileCount,
             systemBreakdown = statsBundle.systems.sortedByDescending { it.count },
+            systemRomBytes = statsBundle.systemRomBytes,
         )
 
         return UIState(
@@ -245,6 +326,7 @@ class HomeViewModel(
 
     init {
         refreshMediaStats()
+        refreshSystemRomSizes()
         viewModelScope.launch {
             val notificationsFlow = combine(
                 indexingInProgress(appContext),
@@ -275,14 +357,22 @@ class HomeViewModel(
                 }
             }
 
+            val storageStatsFlow = combine(
+                mediaStatsState,
+                systemRomBytesState,
+                SystemRomSizeCache.sizesFlow,
+            ) { mediaStats, romBytes, liveCachedSizes ->
+                mediaStats to (liveCachedSizes ?: romBytes)
+            }
+
             val statsFlow = combine(
                 retrogradeDb.gameDao().selectLibraryStats(),
                 retrogradeDb.gameDao().selectSystemsWithCount(),
-                mediaStatsState,
+                storageStatsFlow,
                 topRatedFlow,
                 ratingsMapFlow,
-            ) { raw, systems, mediaStats, topRated, ratingsMap ->
-                StatsBundle(raw, systems, mediaStats, topRated, ratingsMap)
+            ) { raw, systems, (mediaStats, romBytes), topRated, ratingsMap ->
+                StatsBundle(raw, systems, mediaStats, romBytes, topRated, ratingsMap)
             }
 
             val flagsAndStatsFlow = combine(notificationsFlow, statsFlow) { flags, stats ->

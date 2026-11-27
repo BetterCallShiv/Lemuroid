@@ -137,6 +137,8 @@ class NotificationsManager(private val applicationContext: Context) {
         currentGameTitle: String,
         overallProcessed: Int? = null,
         overallTotal: Int? = null,
+        elapsedMs: Long = 0L,
+        etaMs: Long? = null,
     ): Notification {
         createScraperNotificationChannel()
 
@@ -167,7 +169,7 @@ class NotificationsManager(private val applicationContext: Context) {
             "$processed / $total"
         }
 
-        val expandedText = if (isDualProgress) {
+        val baseExpandedText = if (isDualProgress) {
             val overallRemaining = (overallTotal!! - overallProcessed!!).coerceAtLeast(0)
             applicationContext.getString(
                 R.string.scraper_notification_expanded_dual,
@@ -188,6 +190,15 @@ class NotificationsManager(private val applicationContext: Context) {
                 total,
             )
         }
+
+        val elapsedLabel = formatDuration(elapsedMs)
+        val etaLabel = etaMs?.let { formatDuration(it) } ?: "--"
+        val timingLine = applicationContext.getString(
+            R.string.scraper_notification_timing,
+            elapsedLabel,
+            etaLabel,
+        )
+        val expandedText = "$baseExpandedText\n$timingLine"
 
         val title = if (isDualProgress) {
             applicationContext.getString(R.string.scraper_notification_all_platforms)
@@ -272,6 +283,18 @@ class NotificationsManager(private val applicationContext: Context) {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setContentIntent(contentIntent)
             .build()
+    }
+
+    private fun formatDuration(durationMs: Long): String {
+        val totalSeconds = (durationMs.coerceAtLeast(0L) / 1000L)
+        val hours = totalSeconds / 3600L
+        val minutes = (totalSeconds % 3600L) / 60L
+        val seconds = totalSeconds % 60L
+        return when {
+            hours > 0L -> String.format(java.util.Locale.ROOT, "%dh %02dm", hours, minutes)
+            minutes > 0L -> String.format(java.util.Locale.ROOT, "%dm %02ds", minutes, seconds)
+            else -> String.format(java.util.Locale.ROOT, "0:%02d", seconds)
+        }
     }
 
     private fun createDefaultNotificationChannel() {

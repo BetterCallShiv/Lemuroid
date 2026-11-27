@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.documentfile.provider.DocumentFile
+import coil.imageLoader
 import com.swordfish.lemuroid.app.mobile.feature.settings.SettingsManager
 import com.swordfish.lemuroid.app.mobile.shared.NotificationsManager
 import com.swordfish.lemuroid.common.kotlin.calculateRomCrc32
@@ -79,6 +81,17 @@ class BatchScraperManager(
         dismissNotification()
     }
 
+    private fun computeTiming(startElapsedMs: Long, completed: Int, total: Int): Pair<Long, Long?> {
+        val elapsedMs = (SystemClock.elapsedRealtime() - startElapsedMs).coerceAtLeast(0L)
+        val remaining = (total - completed).coerceAtLeast(0)
+        val etaMs = if (completed > 0 && remaining > 0) {
+            ((elapsedMs.toDouble() / completed.toDouble()) * remaining.toDouble()).toLong()
+        } else {
+            null
+        }
+        return elapsedMs to etaMs
+    }
+
     private fun postNotification(
         notification: Notification,
         notificationId: Int = NotificationsManager.SCRAPER_NOTIFICATION_ID,
@@ -135,6 +148,7 @@ class BatchScraperManager(
             val processedCount = AtomicInteger(0)
             val scrapedCount = AtomicInteger(0)
             val gameSemaphore = Semaphore(MAX_CONCURRENT_GAMES)
+            val scrapeStartTimeMs = SystemClock.elapsedRealtime()
 
             coroutineScope {
                 gamesToScrape.map { game ->
@@ -147,7 +161,7 @@ class BatchScraperManager(
                                 currentGameTitle = gameTitle,
                             )
 
-                            val success = scrapeSingleGame(game)
+                            val success = scrapeSingleGame(game, overwrite = overwrite)
                             val done = processedCount.incrementAndGet()
                             val scraped = if (success) scrapedCount.incrementAndGet() else scrapedCount.get()
 
@@ -156,6 +170,7 @@ class BatchScraperManager(
                                 current = done,
                                 currentGameTitle = gameTitle,
                             )
+                            val (elapsedMs, etaMs) = computeTiming(scrapeStartTimeMs, done, gamesToScrape.size)
                             postNotification(
                                 notificationsManager.scrapingProgressNotification(
                                     platformName = systemTitle,
@@ -163,6 +178,8 @@ class BatchScraperManager(
                                     scraped = scraped,
                                     total = gamesToScrape.size,
                                     currentGameTitle = gameTitle,
+                                    elapsedMs = elapsedMs,
+                                    etaMs = etaMs,
                                 ),
                             )
                         }
@@ -237,6 +254,7 @@ class BatchScraperManager(
             val overallProcessedCount = AtomicInteger(0)
             val overallScrapedCount = AtomicInteger(0)
             val gameSemaphore = Semaphore(MAX_CONCURRENT_GAMES)
+            val scrapeStartTimeMs = SystemClock.elapsedRealtime()
 
             for ((meta, systemGames) in platformsToScrape) {
                 ensureActive()
@@ -265,7 +283,7 @@ class BatchScraperManager(
                                     metaSystemName = allPlatformsTitle,
                                 )
 
-                                val success = scrapeSingleGame(game)
+                                val success = scrapeSingleGame(game, overwrite = overwrite)
                                 val sDone = systemProcessed.incrementAndGet()
                                 val sScraped = if (success) systemScraped.incrementAndGet() else systemScraped.get()
                                 val oDone = overallProcessedCount.incrementAndGet()
@@ -277,6 +295,7 @@ class BatchScraperManager(
                                     currentGameTitle = gameTitle,
                                     metaSystemName = allPlatformsTitle,
                                 )
+                                val (elapsedMs, etaMs) = computeTiming(scrapeStartTimeMs, oDone, overallTotal)
                                 postNotification(
                                     notificationsManager.scrapingProgressNotification(
                                         platformName = systemTitle,
@@ -286,6 +305,8 @@ class BatchScraperManager(
                                         currentGameTitle = gameTitle,
                                         overallProcessed = oDone,
                                         overallTotal = overallTotal,
+                                        elapsedMs = elapsedMs,
+                                        etaMs = etaMs,
                                     ),
                                 )
                             }
@@ -373,7 +394,10 @@ class BatchScraperManager(
         return false
     }
 
-    suspend fun scrapeSingleGame(game: Game): Boolean = withContext(Dispatchers.IO) {
+    suspend fun scrapeSingleGame(
+        game: Game,
+        overwrite: Boolean = false,
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
             val existingDetails = retrogradeDb.gameDetailsDao().getGameDetailsDirect(game.id)
             val existingBanner = existingDetails?.bannerUrl?.takeIf { mediaStorageManager.isMediaUriValid(it) }
@@ -555,7 +579,7 @@ class BatchScraperManager(
                 val boxArtDeferred = async {
                     val local = rawBoxArtUrl?.let {
                         mediaSemaphore.withPermit {
-                            mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BOXART, romBasename, downloadedUrlMap)
+                            mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BOXART, romBasename, downloadedUrlMap, overwrite = overwrite)
                         }
                     }
                     mediaStorageManager.toFileUri(local) ?: rawBoxArtUrl
@@ -565,7 +589,7 @@ class BatchScraperManager(
                     if (shouldDownloadBanner) {
                         val local = rawBannerUrl?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BANNERS, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.BANNERS, romBasename, downloadedUrlMap, overwrite = overwrite)
                             }
                         }
                         mediaStorageManager.toFileUri(local) ?: rawBannerUrl ?: existingBanner
@@ -578,7 +602,7 @@ class BatchScraperManager(
                     if (shouldDownloadFanart) {
                         rawFanartUrl?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.FANART, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.FANART, romBasename, downloadedUrlMap, overwrite = overwrite)
                             }
                         }
                     }
@@ -588,7 +612,7 @@ class BatchScraperManager(
                     if (shouldDownloadBanner || shouldDownloadFanart) {
                         val local = rawLogoUrl?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.LOGOS, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.LOGOS, romBasename, downloadedUrlMap, overwrite = overwrite)
                             }
                         }
                         mediaStorageManager.toFileUri(local) ?: rawLogoUrl ?: existingLogo
@@ -602,7 +626,7 @@ class BatchScraperManager(
                         val isTitle = shotUrl.contains("sstitle", ignoreCase = true) || shotUrl.contains("title", ignoreCase = true)
                         val cat = if (isTitle) MediaStorageManager.MediaType.TITLES else MediaStorageManager.MediaType.SCREENSHOTS
                         val localShot = mediaSemaphore.withPermit {
-                            mediaStorageManager.saveOrDownloadMedia(shotUrl, systemId, cat, romBasename, downloadedUrlMap, index = idx + 1)
+                            mediaStorageManager.saveOrDownloadMedia(shotUrl, systemId, cat, romBasename, downloadedUrlMap, index = idx + 1, overwrite = overwrite)
                         }
                         mediaStorageManager.toFileUri(localShot) ?: shotUrl
                     }
@@ -612,7 +636,7 @@ class BatchScraperManager(
                     if (shouldDownloadVideo) {
                         val local = rawVideoUrl?.takeIf { it.isNotBlank() }?.let {
                             mediaSemaphore.withPermit {
-                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.VIDEOS, romBasename, downloadedUrlMap)
+                                mediaStorageManager.saveOrDownloadMedia(it, systemId, MediaStorageManager.MediaType.VIDEOS, romBasename, downloadedUrlMap, overwrite = overwrite)
                             }
                         }
                         mediaStorageManager.toFileUri(local) ?: rawVideoUrl ?: existingVideo
@@ -701,7 +725,7 @@ class BatchScraperManager(
                     bannerUrl = finalBannerUri,
                     logoUrl = finalLogoUri,
                     boxArtFrontUrl = finalBoxArtUri ?: existingBoxArt ?: game.coverFrontUrl,
-                    boxArtBackUrl = finalBackBoxArtUri ?: existingBackBoxArt ?: screenScraperData?.boxArtBackUrl,
+                    boxArtBackUrl = finalBackBoxArtUri ?: if (overwrite) (screenScraperData?.boxArtBackUrl ?: existingBackBoxArt) else (existingBackBoxArt ?: screenScraperData?.boxArtBackUrl),
                     screenshotUrlsJson = screenScraperClient.serializeScreenshots(mergedScreenshotUris),
                     videoUrl = finalVideoUri,
                     families = screenScraperData?.families ?: existingDetails?.families,
@@ -724,6 +748,9 @@ class BatchScraperManager(
                         coverFrontUrl = if (shouldUpdateCover) finalBoxArtUri else game.coverFrontUrl,
                     )
                     retrogradeDb.gameDao().update(listOf(updatedGame))
+                }
+                if (overwrite) {
+                    appContext.imageLoader.memoryCache?.clear()
                 }
                 true
             } else {

@@ -1,7 +1,12 @@
 package com.swordfish.lemuroid.app.mobile.feature.gamedetails
 
+import android.graphics.Bitmap
+import android.graphics.Color as AndroidColor
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.media.MediaPlayer
 import android.net.Uri
+import android.os.Build
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.activity.compose.BackHandler
@@ -97,6 +102,9 @@ import com.swordfish.lemuroid.app.mobile.shared.compose.ui.LemuroidGameImage
 import com.swordfish.lemuroid.lib.library.GameSystem
 import com.swordfish.lemuroid.lib.library.MetaSystemID
 import com.swordfish.lemuroid.lib.library.db.entity.Game
+import com.swordfish.lemuroid.lib.scraper.ScreenScraperClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 sealed interface DetailChipFilter {
@@ -249,6 +257,7 @@ fun GameDetailScreen(
             }
 
             val frontCoverUrl = details?.boxArtFrontUrl ?: game.coverFrontUrl
+            val coverReloadKey = details?.lastScrapedAt ?: 0L
             val backCoverUrl = details?.boxArtBackUrl?.takeIf { it.isNotBlank() }
             val coverImages = listOfNotNull(frontCoverUrl?.takeIf { it.isNotBlank() }, backCoverUrl)
             val developer = details?.publisher ?: game.developer
@@ -344,6 +353,7 @@ fun GameDetailScreen(
                 val topOffsetPx = 2.dp.roundToPx()
 
                 val coverPlaceable = subcompose("cover") {
+                    var isTransparentBoxArt by remember(frontCoverUrl, coverReloadKey) { mutableStateOf(false) }
                     Card(
                         modifier = Modifier
                             .width(110.dp)
@@ -354,18 +364,30 @@ fun GameDetailScreen(
                                 }
                                 previewLightbox = coverImages to 0
                             },
-                        shape = RoundedCornerShape(12.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                        shape = if (isTransparentBoxArt) RoundedCornerShape(0.dp) else RoundedCornerShape(12.dp),
+                        colors = if (isTransparentBoxArt) {
+                            CardDefaults.cardColors(containerColor = Color.Transparent)
+                        } else {
+                            CardDefaults.cardColors()
+                        },
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = if (isTransparentBoxArt) 0.dp else 8.dp,
+                        ),
                     ) {
                         if (!frontCoverUrl.isNullOrBlank()) {
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
                                     .data(frontCoverUrl)
+                                    .memoryCacheKey("$frontCoverUrl#$coverReloadKey")
+                                    .allowHardware(false)
                                     .crossfade(true)
                                     .build(),
                                 contentDescription = stringResource(R.string.content_desc_boxart_front),
                                 modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
+                                contentScale = if (isTransparentBoxArt) ContentScale.Fit else ContentScale.Crop,
+                                onSuccess = { success ->
+                                    isTransparentBoxArt = hasTransparentCorners(success.result.drawable)
+                                },
                             )
                         } else {
                             LemuroidGameImage(
@@ -1161,20 +1183,34 @@ private fun InlineGameplayVideoCard(
                 )
             }
 
-            if (isPlaying && !hasError) {
+            val isLocalVideo = videoUrl.startsWith("file://") || videoUrl.startsWith("/")
+            var resolvedPlayUrl by remember(videoUrl) {
+                mutableStateOf(if (isLocalVideo) videoUrl else null)
+            }
+
+            LaunchedEffect(isPlaying, videoUrl) {
+                if (isPlaying && !isLocalVideo && resolvedPlayUrl == null) {
+                    resolvedPlayUrl = withContext(Dispatchers.IO) {
+                        ScreenScraperClient.resolvePlayableVideoUrl(videoUrl, context)
+                    }
+                }
+            }
+
+            val playUrl = resolvedPlayUrl
+            if (isPlaying && !hasError && playUrl != null) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
                     factory = { ctx ->
                         VideoView(ctx).apply {
                             videoViewRef = this
-                            if (videoUrl.startsWith("file://")) {
-                                val path = Uri.parse(videoUrl).path ?: videoUrl.removePrefix("file://")
+                            if (playUrl.startsWith("file://")) {
+                                val path = Uri.parse(playUrl).path ?: playUrl.removePrefix("file://")
                                 setVideoPath(path)
-                            } else if (videoUrl.startsWith("/")) {
-                                setVideoPath(videoUrl)
+                            } else if (playUrl.startsWith("/")) {
+                                setVideoPath(playUrl)
                             } else {
-                                val headers = mapOf("User-Agent" to "User-Agent")
-                                setVideoURI(Uri.parse(videoUrl), headers)
+                                val headers = mapOf("User-Agent" to "AlphaLemuroid")
+                                setVideoURI(Uri.parse(playUrl), headers)
                             }
                             setOnPreparedListener { mp ->
                                 mediaPlayerRef = mp
@@ -1432,4 +1468,23 @@ private fun PrimaryPlayButton(
             style = MaterialTheme.typography.titleMedium,
         )
     }
+}
+
+private fun hasTransparentCorners(drawable: Drawable): Boolean {
+    val bitmap = (drawable as? BitmapDrawable)?.bitmap ?: return false
+    if (!bitmap.hasAlpha() || bitmap.width < 4 || bitmap.height < 4) return false
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.config == Bitmap.Config.HARDWARE) {
+        return false
+    }
+    val w = bitmap.width
+    val h = bitmap.height
+    val transparentCount = listOf(
+        0 to 0,
+        w - 1 to 0,
+        0 to h - 1,
+        w - 1 to h - 1,
+    ).count { (x, y) ->
+        AndroidColor.alpha(bitmap.getPixel(x, y)) < 200
+    }
+    return transparentCount >= 2
 }

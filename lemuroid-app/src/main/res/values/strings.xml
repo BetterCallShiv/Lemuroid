@@ -393,6 +393,7 @@
     <string name="scraper_notification_summary">Scraped: %1$d • Left: %2$d • Total: %3$d</string>
     <string name="scraper_notification_expanded">Current: %1$s\nScraped: %2$d • Left: %3$d • Total: %4$d</string>
     <string name="scraper_notification_expanded_dual">Current: %1$s\nScraped: %2$d • Left: %3$d • Total: %4$d\nOverall: %5$d of %6$d games (%7$d remaining)</string>
+    <string name="scraper_notification_timing">Elapsed: %1$s • ETA: %2$s</string>
     <string name="scraper_notification_complete_title">Scraping completed: %1$s</string>
     <string name="scraper_notification_complete_message">Scraped %1$d of %2$d games.</string>
     <string name="scraper_notification_complete_all_title">Scraping completed: All platforms</string>
@@ -467,7 +468,7 @@
     <string name="dialog_customize_reset">Reset</string>
     <string name="dialog_add_to_collection_empty">No collections yet. Create one below.</string>
 
-    <string name="home_library_stats">Library stats</string>
+    <string name="home_library_stats">Library Stats</string>
     <string name="stats_played">Played</string>
     <string name="stats_scraped">Scraped</string>
     <string name="stats_games_played_progress">Games played</string>

@@ -47,16 +47,24 @@ object CoverUtils {
                     .addInterceptor { chain ->
                         val original = chain.request()
                         val authorizedUrl = ScreenScraperClient.attachCredentialsIfNeeded(original.url, applicationContext)
-                        val request = if (original.url.host.contains("screenscraper.fr", ignoreCase = true)) {
-                            original.newBuilder()
+                        val isScraperHost = authorizedUrl.host.contains("screenscraper.fr", ignoreCase = true) ||
+                            authorizedUrl.host.contains("alphalemuroid.", ignoreCase = true)
+                        val request = if (isScraperHost) {
+                            val reqBuilder = original.newBuilder()
                                 .url(authorizedUrl)
                                 .header("User-Agent", "AlphaLemuroid")
-                                .build()
+                            if (authorizedUrl.host.contains("alphalemuroid.", ignoreCase = true)) {
+                                ScreenScraperClient.getUserCredentials(applicationContext)?.let { (ssUser, ssPass) ->
+                                    reqBuilder.header("X-SS-User", ssUser)
+                                    reqBuilder.header("X-SS-Password", ssPass)
+                                }
+                            }
+                            reqBuilder.build()
                         } else {
                             original
                         }
                         val response = chain.proceed(request)
-                        if (original.url.host.contains("screenscraper.fr", ignoreCase = true) && response.isSuccessful) {
+                        if (isScraperHost && response.isSuccessful) {
                             val contentType = response.header("Content-Type")
                             if (contentType != null && contentType.contains("text/html", ignoreCase = true)) {
                                 return@addInterceptor response.newBuilder()
