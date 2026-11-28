@@ -233,11 +233,20 @@ class NotificationsManager(private val applicationContext: Context) {
             .build()
     }
 
+    data class ScrapeCompleteSummary(
+        val bothCount: Int = 0,
+        val screenScraperOnlyCount: Int = 0,
+        val igdbOnlyCount: Int = 0,
+        val libretroOnlyCount: Int = 0,
+        val failedCount: Int = 0,
+    )
+
     fun scrapingCompleteNotification(
         platformName: String,
         scrapedCount: Int,
         totalCount: Int,
         isAllPlatforms: Boolean = false,
+        summary: ScrapeCompleteSummary? = null,
     ): Notification {
         createScraperNotificationChannel()
 
@@ -274,10 +283,46 @@ class NotificationsManager(private val applicationContext: Context) {
             )
         }
 
+        val bigText = if (summary != null) {
+            buildString {
+                append(message)
+                append('\n')
+                append(
+                    applicationContext.getString(
+                        R.string.scraper_notification_complete_breakdown,
+                        summary.bothCount,
+                        summary.screenScraperOnlyCount,
+                        summary.igdbOnlyCount,
+                    ),
+                )
+                if (summary.libretroOnlyCount > 0) {
+                    append('\n')
+                    append(
+                        applicationContext.getString(
+                            R.string.scraper_notification_complete_libretro,
+                            summary.libretroOnlyCount,
+                        ),
+                    )
+                }
+                if (summary.failedCount > 0) {
+                    append('\n')
+                    append(
+                        applicationContext.getString(
+                            R.string.scraper_notification_complete_failed,
+                            summary.failedCount,
+                        ),
+                    )
+                }
+            }
+        } else {
+            message
+        }
+
         return NotificationCompat.Builder(applicationContext, SCRAPER_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_lemuroid_tiny)
             .setContentTitle(title)
             .setContentText(message)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setOngoing(false)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)

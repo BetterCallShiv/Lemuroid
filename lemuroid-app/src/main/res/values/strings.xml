@@ -398,10 +398,13 @@
     <string name="scraper_notification_expanded">Current: %1$s\nScraped: %2$d • Left: %3$d • Total: %4$d</string>
     <string name="scraper_notification_expanded_dual">Current: %1$s\nScraped: %2$d • Left: %3$d • Total: %4$d\nOverall: %5$d of %6$d games (%7$d remaining)</string>
     <string name="scraper_notification_timing">Elapsed: %1$s • ETA: %2$s</string>
-    <string name="scraper_notification_complete_title">Scraping completed: %1$s</string>
-    <string name="scraper_notification_complete_message">Scraped %1$d of %2$d games.</string>
-    <string name="scraper_notification_complete_all_title">Scraping completed: All platforms</string>
-    <string name="scraper_notification_complete_all_message">Scraped %1$d of %2$d games across all platforms.</string>
+    <string name="scraper_notification_complete_title">Scraping Completed: %1$s</string>
+    <string name="scraper_notification_complete_message">Scraped %1$d of %2$d games</string>
+    <string name="scraper_notification_complete_all_title">Scraping Completed: All platforms</string>
+    <string name="scraper_notification_complete_all_message">Scraped %1$d of %2$d games across all platforms</string>
+    <string name="scraper_notification_complete_breakdown">ScreenScraper + IGDB: %1$d\nScreenScraper Only: %2$d\nIGDB Only: %3$d</string>
+    <string name="scraper_notification_complete_libretro">Libretro DB: %1$d</string>
+    <string name="scraper_notification_complete_failed">Failed: %1$d</string>
     <string name="game_details_about">About</string>
     <string name="game_details_file_info">File Information</string>
     <string name="game_details_system">System</string>

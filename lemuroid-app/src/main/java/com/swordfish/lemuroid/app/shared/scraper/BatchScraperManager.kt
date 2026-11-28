@@ -57,6 +57,44 @@ private data class DownloadedMediaBundle(
     val videoUri: String?,
 )
 
+private enum class ScrapeOutcome {
+    BOTH,
+    SCREENSCRAPER_ONLY,
+    IGDB_ONLY,
+    LIBRETRO_ONLY,
+    FAILED,
+}
+
+private class OutcomeCounters {
+    private val both = AtomicInteger(0)
+    private val screenScraperOnly = AtomicInteger(0)
+    private val igdbOnly = AtomicInteger(0)
+    private val libretroOnly = AtomicInteger(0)
+    private val failed = AtomicInteger(0)
+
+    fun record(outcome: ScrapeOutcome): Boolean {
+        when (outcome) {
+            ScrapeOutcome.BOTH -> both.incrementAndGet()
+            ScrapeOutcome.SCREENSCRAPER_ONLY -> screenScraperOnly.incrementAndGet()
+            ScrapeOutcome.IGDB_ONLY -> igdbOnly.incrementAndGet()
+            ScrapeOutcome.LIBRETRO_ONLY -> libretroOnly.incrementAndGet()
+            ScrapeOutcome.FAILED -> {
+                failed.incrementAndGet()
+                return false
+            }
+        }
+        return true
+    }
+
+    fun toSummary() = NotificationsManager.ScrapeCompleteSummary(
+        bothCount = both.get(),
+        screenScraperOnlyCount = screenScraperOnly.get(),
+        igdbOnlyCount = igdbOnly.get(),
+        libretroOnlyCount = libretroOnly.get(),
+        failedCount = failed.get(),
+    )
+}
+
 class BatchScraperManager(
     private val appContext: Context,
     private val retrogradeDb: RetrogradeDatabase,
@@ -147,6 +185,7 @@ class BatchScraperManager(
 
             val processedCount = AtomicInteger(0)
             val scrapedCount = AtomicInteger(0)
+            val outcomes = OutcomeCounters()
             val gameSemaphore = Semaphore(MAX_CONCURRENT_GAMES)
             val scrapeStartTimeMs = SystemClock.elapsedRealtime()
 
@@ -161,7 +200,7 @@ class BatchScraperManager(
                                 currentGameTitle = gameTitle,
                             )
 
-                            val success = scrapeSingleGame(game, overwrite = overwrite)
+                            val success = outcomes.record(scrapeSingleGameOutcome(game, overwrite = overwrite))
                             val done = processedCount.incrementAndGet()
                             val scraped = if (success) scrapedCount.incrementAndGet() else scrapedCount.get()
 
@@ -193,6 +232,7 @@ class BatchScraperManager(
                     platformName = systemTitle,
                     scrapedCount = finalScrapedCount,
                     totalCount = gamesToScrape.size,
+                    summary = outcomes.toSummary(),
                 ),
                 notificationId = NotificationsManager.SCRAPER_COMPLETE_NOTIFICATION_ID,
             )
@@ -253,6 +293,7 @@ class BatchScraperManager(
 
             val overallProcessedCount = AtomicInteger(0)
             val overallScrapedCount = AtomicInteger(0)
+            val outcomes = OutcomeCounters()
             val gameSemaphore = Semaphore(MAX_CONCURRENT_GAMES)
             val scrapeStartTimeMs = SystemClock.elapsedRealtime()
 
@@ -283,7 +324,7 @@ class BatchScraperManager(
                                     metaSystemName = allPlatformsTitle,
                                 )
 
-                                val success = scrapeSingleGame(game, overwrite = overwrite)
+                                val success = outcomes.record(scrapeSingleGameOutcome(game, overwrite = overwrite))
                                 val sDone = systemProcessed.incrementAndGet()
                                 val sScraped = if (success) systemScraped.incrementAndGet() else systemScraped.get()
                                 val oDone = overallProcessedCount.incrementAndGet()
@@ -322,6 +363,7 @@ class BatchScraperManager(
                     scrapedCount = finalScrapedCount,
                     totalCount = overallTotal,
                     isAllPlatforms = true,
+                    summary = outcomes.toSummary(),
                 ),
                 notificationId = NotificationsManager.SCRAPER_COMPLETE_NOTIFICATION_ID,
             )
@@ -397,7 +439,12 @@ class BatchScraperManager(
     suspend fun scrapeSingleGame(
         game: Game,
         overwrite: Boolean = false,
-    ): Boolean = withContext(Dispatchers.IO) {
+    ): Boolean = scrapeSingleGameOutcome(game, overwrite) != ScrapeOutcome.FAILED
+
+    private suspend fun scrapeSingleGameOutcome(
+        game: Game,
+        overwrite: Boolean = false,
+    ): ScrapeOutcome = withContext(Dispatchers.IO) {
         try {
             val existingDetails = retrogradeDb.gameDetailsDao().getGameDetailsDirect(game.id)
             val existingBanner = existingDetails?.bannerUrl?.takeIf { mediaStorageManager.isMediaUriValid(it) }
@@ -752,7 +799,12 @@ class BatchScraperManager(
                 if (overwrite) {
                     appContext.imageLoader.memoryCache?.clear()
                 }
-                true
+                when {
+                    screenScraperData != null && alphaLemuroidData != null -> ScrapeOutcome.BOTH
+                    screenScraperData != null -> ScrapeOutcome.SCREENSCRAPER_ONLY
+                    alphaLemuroidData != null -> ScrapeOutcome.IGDB_ONLY
+                    else -> ScrapeOutcome.LIBRETRO_ONLY
+                }
             } else {
                 val existing = retrogradeDb.gameDetailsDao().getGameDetailsDirect(game.id)
                 val normalizedCrc = crc?.trim()?.uppercase()?.takeIf { it.isNotBlank() && it != "0" }
@@ -778,11 +830,13 @@ class BatchScraperManager(
                     lastScrapedAt = System.currentTimeMillis(),
                 )
                 retrogradeDb.gameDetailsDao().insertOrUpdate(fallback)
-                false
+                ScrapeOutcome.FAILED
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Throwable) {
             android.util.Log.e("BatchScraperManager", "Error scraping game ${game.id}: ${e.message}", e)
-            false
+            ScrapeOutcome.FAILED
         }
     }
 }
