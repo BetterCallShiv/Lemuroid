@@ -7,31 +7,31 @@ import com.swordfish.lemuroid.lib.library.SystemID
 object ScreenScraperSystemMapper {
     fun getSystemEid(systemID: SystemID): Int? {
         return when (systemID) {
+            SystemID.GENESIS -> 1
+            SystemID.SMS -> 2
             SystemID.NES -> 3
             SystemID.SNES -> 4
-            SystemID.GENESIS -> 1
             SystemID.GB -> 9
             SystemID.GBC -> 10
             SystemID.GBA -> 12
             SystemID.N64 -> 14
-            SystemID.SMS -> 2
-            SystemID.PSP -> 61
             SystemID.NDS -> 15
-            SystemID.GG -> 21
-            SystemID.ATARI2600 -> 26
-            SystemID.PSX -> 57
-            SystemID.FBNEO -> 75
-            SystemID.MAME2003PLUS -> 75
-            SystemID.PC_ENGINE -> 31
-            SystemID.LYNX -> 28
-            SystemID.ATARI7800 -> 40
+            SystemID.NINTENDO_3DS -> 17
             SystemID.SEGACD -> 20
-            SystemID.NGP -> 82
-            SystemID.NGC -> 13
+            SystemID.GG -> 21
+            SystemID.NGP -> 25
+            SystemID.ATARI2600 -> 26
+            SystemID.LYNX -> 28
+            SystemID.PC_ENGINE -> 31
+            SystemID.ATARI7800 -> 41
             SystemID.WS -> 45
             SystemID.WSC -> 46
+            SystemID.PSX -> 57
+            SystemID.PSP -> 61
+            SystemID.FBNEO -> 75
+            SystemID.MAME2003PLUS -> 75
+            SystemID.NGC -> 82
             SystemID.DOS -> 135
-            SystemID.NINTENDO_3DS -> 17
         }
     }
 
