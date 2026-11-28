@@ -118,7 +118,7 @@ interface GameDao {
 
     @Query(
         """
-        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate, d.families AS families FROM games g
+        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate, d.families AS families, COALESCE(d.isTopStaff, 0) AS isTopStaff FROM games g
         LEFT JOIN game_details d ON g.id = d.gameId
         WHERE g.systemId IN (:systemIds)
           AND (
@@ -132,6 +132,7 @@ interface GameDao {
             OR d.releaseDate LIKE '%' || :query || '%'
             OR d.crc32 LIKE '%' || :query || '%'
             OR d.synopsis LIKE '%' || :query || '%'
+            OR (COALESCE(d.isTopStaff, 0) = 1 AND (LOWER(:query) LIKE '%staff%' OR LOWER(:query) LIKE '%best of%' OR LOWER(:query) LIKE '%best by%' OR LOWER(:query) LIKE '%topstaff%'))
           )
         ORDER BY
           CASE WHEN :sortOrder = 'FAVORITES_FIRST' THEN g.isFavorite END DESC,
@@ -174,6 +175,18 @@ interface GameDao {
     )
     fun selectGenresForSystems(systemIds: List<String>): Flow<List<String>>
 
+    @Query(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM game_details d
+            INNER JOIN games g ON g.id = d.gameId
+            WHERE g.systemId IN (:systemIds)
+              AND d.isTopStaff = 1
+        )
+        """,
+    )
+    fun selectHasTopStaffForSystems(systemIds: List<String>): Flow<Boolean>
+
     @Query("SELECT * FROM games WHERE systemId IN (:systemIds) ORDER BY COALESCE(customName, title) ASC")
     suspend fun selectAllBySystems(systemIds: List<String>): List<Game>
 
@@ -188,7 +201,7 @@ interface GameDao {
 
     @Query(
         """
-        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate, d.families AS families FROM games g
+        SELECT g.*, d.rating AS rating, d.genres AS genres, d.releaseDate AS releaseDate, d.families AS families, COALESCE(d.isTopStaff, 0) AS isTopStaff FROM games g
         LEFT JOIN game_details d ON g.id = d.gameId
         WHERE g.isFavorite = 1
           AND (
@@ -202,6 +215,7 @@ interface GameDao {
             OR d.releaseDate LIKE '%' || :query || '%'
             OR d.crc32 LIKE '%' || :query || '%'
             OR d.synopsis LIKE '%' || :query || '%'
+            OR (COALESCE(d.isTopStaff, 0) = 1 AND (LOWER(:query) LIKE '%staff%' OR LOWER(:query) LIKE '%best of%' OR LOWER(:query) LIKE '%best by%' OR LOWER(:query) LIKE '%topstaff%'))
           )
         ORDER BY
           CASE WHEN :sortOrder = 'MOST_PLAYED' THEN g.totalPlayTimeMs END DESC,
@@ -274,4 +288,5 @@ data class GameListItem(
     val genres: String?,
     val releaseDate: String? = null,
     val families: String? = null,
+    val isTopStaff: Boolean = false,
 )

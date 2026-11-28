@@ -66,6 +66,7 @@ data class ExportedGameDetails(
     val players: String? = null,
     val rating: Float? = null,
     val ratingCount: Int? = null,
+    val isTopStaff: Boolean = false,
     val bannerUrl: String? = null,
     val logoUrl: String? = null,
     val boxArtFrontUrl: String? = null,

@@ -43,7 +43,7 @@ import com.swordfish.lemuroid.lib.library.db.entity.GameDetails
         GameCollection::class,
         GameCollectionCrossRef::class,
     ],
-    version = 18,
+    version = 11,
     exportSchema = true,
 )
 abstract class RetrogradeDatabase : RoomDatabase() {

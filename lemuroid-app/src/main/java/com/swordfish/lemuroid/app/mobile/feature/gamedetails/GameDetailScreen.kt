@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.VideogameAsset
@@ -112,6 +113,7 @@ sealed interface DetailChipFilter {
     data class Family(val family: String) : DetailChipFilter
     data class Year(val year: String) : DetailChipFilter
     data class Rating(val rating: Float, val formattedRating: String) : DetailChipFilter
+    data object TopStaff : DetailChipFilter
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -312,6 +314,25 @@ fun GameDetailScreen(
                             },
                             onClick = onChipFilterSelected?.let {
                                 { pendingChipFilter = DetailChipFilter.Rating(rating, shortRating) }
+                            },
+                        ),
+                    )
+                }
+                if (details?.isTopStaff == true) {
+                    val staffLabel = stringResource(R.string.game_details_best_by_staff)
+                    add(
+                        HeaderTagChip(
+                            text = staffLabel,
+                            icon = {
+                                Icon(
+                                    imageVector = Icons.Filled.WorkspacePremium,
+                                    contentDescription = staffLabel,
+                                    tint = Color(0xFFFFB300),
+                                    modifier = Modifier.size(15.dp),
+                                )
+                            },
+                            onClick = onChipFilterSelected?.let {
+                                { pendingChipFilter = DetailChipFilter.TopStaff }
                             },
                         ),
                     )
@@ -542,6 +563,7 @@ fun GameDetailScreen(
                             is DetailChipFilter.Family -> activePendingFilter.family
                             is DetailChipFilter.Year -> activePendingFilter.year
                             is DetailChipFilter.Rating -> "★ ${activePendingFilter.formattedRating}"
+                            is DetailChipFilter.TopStaff -> stringResource(R.string.game_details_best_by_staff)
                         }
                         val metaSystem = remember(game.systemId) {
                             MetaSystemID.values().firstOrNull { m ->

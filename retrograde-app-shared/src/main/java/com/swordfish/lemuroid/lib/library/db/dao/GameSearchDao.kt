@@ -134,6 +134,8 @@ class GameSearchDao(private val internalDao: Internal) {
                    OR d.releaseDate LIKE ?
                    OR d.crc32 LIKE ?
                    OR d.synopsis LIKE ?
+                   OR d.families LIKE ?
+                   OR (COALESCE(d.isTopStaff, 0) = 1 AND (LOWER(?) LIKE '%staff%' OR LOWER(?) LIKE '%best of%' OR LOWER(?) LIKE '%best by%' OR LOWER(?) LIKE '%topstaff%'))
                 ORDER BY LOWER(COALESCE(g.customName, g.title)) ASC
                 """.trimIndent(),
                 arrayOf(
@@ -145,6 +147,11 @@ class GameSearchDao(private val internalDao: Internal) {
                     likePattern,
                     likePattern,
                     likePattern,
+                    likePattern,
+                    trimmed,
+                    trimmed,
+                    trimmed,
+                    trimmed,
                 ),
             ),
         )

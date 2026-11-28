@@ -57,6 +57,7 @@ object Migrations {
     val VERSION_10_11: Migration =
         object : Migration(10, 11) {
             override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE `games` ADD COLUMN `totalPlayTimeMs` INTEGER NOT NULL DEFAULT 0")
                 database.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `cheats` (
@@ -88,12 +89,6 @@ object Migrations {
                 database.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_cheats_masterCodeId` ON `cheats` (`masterCodeId`)",
                 )
-            }
-        }
-
-    val VERSION_11_12: Migration =
-        object : Migration(11, 12) {
-            override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `game_details` (
@@ -104,12 +99,17 @@ object Migrations {
                         `releaseDate` TEXT,
                         `players` TEXT,
                         `rating` REAL,
+                        `ratingCount` INTEGER,
+                        `isTopStaff` INTEGER NOT NULL DEFAULT 0,
                         `bannerUrl` TEXT,
                         `logoUrl` TEXT,
                         `boxArtFrontUrl` TEXT,
                         `boxArtBackUrl` TEXT,
                         `screenshotUrlsJson` TEXT,
                         `videoUrl` TEXT,
+                        `families` TEXT,
+                        `manualUrlsJson` TEXT,
+                        `crc32` TEXT,
                         `scraperSource` TEXT,
                         `lastScrapedAt` INTEGER,
                         PRIMARY KEY(`gameId`),
@@ -120,19 +120,6 @@ object Migrations {
                 database.execSQL(
                     "CREATE UNIQUE INDEX IF NOT EXISTS `index_game_details_gameId` ON `game_details` (`gameId`)",
                 )
-            }
-        }
-
-    val VERSION_12_13: Migration =
-        object : Migration(12, 13) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE `game_details` ADD COLUMN `videoUrl` TEXT DEFAULT NULL")
-            }
-        }
-
-    val VERSION_13_14: Migration =
-        object : Migration(13, 14) {
-            override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `collections` (
@@ -160,35 +147,6 @@ object Migrations {
                 database.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_collection_games_gameId` ON `collection_games` (`gameId`)",
                 )
-            }
-        }
-
-    val VERSION_14_15: Migration =
-        object : Migration(14, 15) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE `games` ADD COLUMN `totalPlayTimeMs` INTEGER NOT NULL DEFAULT 0")
-            }
-        }
-
-    val VERSION_15_16: Migration =
-        object : Migration(15, 16) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE `game_details` ADD COLUMN `crc32` TEXT DEFAULT NULL")
-            }
-        }
-
-    val VERSION_16_17: Migration =
-        object : Migration(16, 17) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE `game_details` ADD COLUMN `ratingCount` INTEGER DEFAULT NULL")
-            }
-        }
-
-    val VERSION_17_18: Migration =
-        object : Migration(17, 18) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE `game_details` ADD COLUMN `families` TEXT DEFAULT NULL")
-                database.execSQL("ALTER TABLE `game_details` ADD COLUMN `manualUrlsJson` TEXT DEFAULT NULL")
             }
         }
 

@@ -258,6 +258,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
             var selectedSystemFamily by remember { mutableStateOf<String?>(null) }
             var selectedSystemYear by remember { mutableStateOf<String?>(null) }
             var selectedSystemRating by remember { mutableStateOf<Float?>(null) }
+            var selectedSystemTopStaff by remember { mutableStateOf(false) }
             var showSortDialog by remember { mutableStateOf(false) }
             var gameForCollectionDialog by remember { mutableStateOf<Game?>(null) }
 
@@ -282,6 +283,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                     selectedSystemFamily = null
                     selectedSystemYear = null
                     selectedSystemRating = null
+                    selectedSystemTopStaff = false
                 }
                 if (currentRoute != MainRoute.FAVORITES && currentRoute != MainRoute.GAME_DETAILS) {
                     isFavoritesSearchActive = false
@@ -493,6 +495,9 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                             onClearYear = { selectedSystemYear = null },
                             selectedRating = selectedSystemRating,
                             onClearRating = { selectedSystemRating = null },
+                            selectedTopStaff = selectedSystemTopStaff,
+                            onToggleTopStaff = { selectedSystemTopStaff = !selectedSystemTopStaff },
+                            onClearTopStaff = { selectedSystemTopStaff = false },
                             sortOrder = currentSortOrder,
                             isGridView = isGridView,
                             showQuickPlayButton = gridQuickPlay,
@@ -619,6 +624,7 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                 selectedSystemFamily = null
                                 selectedSystemYear = null
                                 selectedSystemRating = null
+                                selectedSystemTopStaff = false
                                 isSystemSearchActive = false
                                 systemSearchQuery = ""
                                 val targetMetaId = MetaSystemID.values().firstOrNull { m ->
@@ -646,24 +652,35 @@ class MainActivity : RetrogradeComponentActivity(), BusyActivity {
                                         selectedSystemFamily = null
                                         selectedSystemYear = null
                                         selectedSystemRating = null
+                                        selectedSystemTopStaff = false
                                     }
                                     is DetailChipFilter.Family -> {
                                         selectedSystemGenres = emptySet()
                                         selectedSystemFamily = filter.family
                                         selectedSystemYear = null
                                         selectedSystemRating = null
+                                        selectedSystemTopStaff = false
                                     }
                                     is DetailChipFilter.Year -> {
                                         selectedSystemGenres = emptySet()
                                         selectedSystemFamily = null
                                         selectedSystemYear = filter.year
                                         selectedSystemRating = null
+                                        selectedSystemTopStaff = false
                                     }
                                     is DetailChipFilter.Rating -> {
                                         selectedSystemGenres = emptySet()
                                         selectedSystemFamily = null
                                         selectedSystemYear = null
                                         selectedSystemRating = filter.rating
+                                        selectedSystemTopStaff = false
+                                    }
+                                    is DetailChipFilter.TopStaff -> {
+                                        selectedSystemGenres = emptySet()
+                                        selectedSystemFamily = null
+                                        selectedSystemYear = null
+                                        selectedSystemRating = null
+                                        selectedSystemTopStaff = true
                                     }
                                 }
                                 val targetMetaId = if (allSystems) {

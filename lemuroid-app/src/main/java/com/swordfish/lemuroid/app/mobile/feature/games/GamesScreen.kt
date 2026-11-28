@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
@@ -81,6 +82,9 @@ fun GamesScreen(
     onClearYear: () -> Unit = {},
     selectedRating: Float? = null,
     onClearRating: () -> Unit = {},
+    selectedTopStaff: Boolean = false,
+    onToggleTopStaff: () -> Unit = {},
+    onClearTopStaff: () -> Unit = {},
     sortOrder: GameSortOrder = GameSortOrder.NAME_ASC,
     isGridView: Boolean = false,
     showQuickPlayButton: Boolean = false,
@@ -93,8 +97,9 @@ fun GamesScreen(
     val gridState = rememberLazyGridState()
     val games by viewModel.games.collectAsState()
     val availableGenres by viewModel.availableGenres.collectAsState()
+    val hasTopStaffGames by viewModel.hasTopStaffGames.collectAsState()
 
-    var lastAppliedFilter by remember { mutableStateOf(listOf<Any?>(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating)) }
+    var lastAppliedFilter by remember { mutableStateOf(listOf<Any?>(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating, selectedTopStaff)) }
     var pendingScrollOldIds by remember { mutableStateOf<List<Int>?>(null) }
 
     LaunchedEffect(searchQuery) {
@@ -112,12 +117,15 @@ fun GamesScreen(
     LaunchedEffect(selectedRating) {
         viewModel.changeSelectedRating(selectedRating)
     }
+    LaunchedEffect(selectedTopStaff) {
+        viewModel.changeSelectedTopStaff(selectedTopStaff)
+    }
     LaunchedEffect(sortOrder) {
         viewModel.changeSortOrder(sortOrder)
     }
 
-    LaunchedEffect(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating) {
-        val current = listOf<Any?>(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating)
+    LaunchedEffect(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating, selectedTopStaff) {
+        val current = listOf<Any?>(sortOrder, selectedGenres, selectedFamily, searchQuery, selectedYear, selectedRating, selectedTopStaff)
         if (current != lastAppliedFilter) {
             lastAppliedFilter = current
             pendingScrollOldIds = games.map { it.game.id }
@@ -140,7 +148,7 @@ fun GamesScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (availableGenres.isNotEmpty() || selectedFamily != null || selectedYear != null || selectedRating != null) {
+        if (availableGenres.isNotEmpty() || hasTopStaffGames || selectedFamily != null || selectedYear != null || selectedRating != null || selectedTopStaff) {
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
@@ -204,10 +212,30 @@ fun GamesScreen(
                 }
                 item(key = "genre_all") {
                     FilterChip(
-                        selected = selectedGenres.isEmpty(),
-                        onClick = { onGenresChange(emptySet()) },
+                        selected = selectedGenres.isEmpty() && !selectedTopStaff,
+                        onClick = {
+                            onGenresChange(emptySet())
+                            onClearTopStaff()
+                        },
                         label = { Text(text = stringResource(R.string.filter_genre_all)) },
                     )
+                }
+                if (hasTopStaffGames || selectedTopStaff) {
+                    item(key = "filter_top_staff") {
+                        FilterChip(
+                            selected = selectedTopStaff,
+                            onClick = onToggleTopStaff,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.WorkspacePremium,
+                                    contentDescription = null,
+                                    tint = Color(0xFFFFB300),
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            },
+                            label = { Text(text = stringResource(R.string.game_details_best_by_staff)) },
+                        )
+                    }
                 }
                 items(availableGenres, key = { it }) { genre ->
                     val isSelected = selectedGenres.any { it.equals(genre, ignoreCase = true) }

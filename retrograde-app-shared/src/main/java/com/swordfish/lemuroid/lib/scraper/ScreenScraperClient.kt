@@ -892,6 +892,10 @@ class ScreenScraperClient(
             if (it > 5.0f) it / 4.0f else it
         } ?: -1.0f
 
+        val topStaffRaw = jeu.optJSONObject("topstaff")?.optString("text")?.trim()
+            ?: jeu.optString("topstaff").trim()
+        val isTopStaff = topStaffRaw == "1" || topStaffRaw.equals("true", ignoreCase = true)
+
         val genres = extractLocalizedNames(jeu.optJSONArray("genres"), listOf("en"))
         val families = extractLocalizedNames(jeu.optJSONArray("familles"), listOf("en", "fr"))
 
@@ -986,6 +990,7 @@ class ScreenScraperClient(
             releaseDate = releaseDate,
             players = players,
             rating = rating,
+            isTopStaff = isTopStaff,
             bannerUrl = bannerUrl,
             logoUrl = logoUrl,
             boxArtFrontUrl = boxArtFrontUrl,

@@ -39,6 +39,7 @@ class GamesViewModel(
     private val selectedFamily = MutableStateFlow<String?>(null)
     private val selectedYear = MutableStateFlow<String?>(null)
     private val selectedRating = MutableStateFlow<Float?>(null)
+    private val selectedTopStaff = MutableStateFlow(false)
     private val sortOrder = MutableStateFlow(GameSortOrder.NAME_ASC)
 
     fun changeSearchQuery(query: String) {
@@ -59,6 +60,10 @@ class GamesViewModel(
 
     fun changeSelectedRating(rating: Float?) {
         selectedRating.value = rating
+    }
+
+    fun changeSelectedTopStaff(enabled: Boolean) {
+        selectedTopStaff.value = enabled
     }
 
     fun changeSortOrder(order: GameSortOrder) {
@@ -98,18 +103,35 @@ class GamesViewModel(
             )
 
     @OptIn(ExperimentalCoroutinesApi::class)
+    val hasTopStaffGames: StateFlow<Boolean> =
+        systemDbNames
+            .flatMapLatest { systemIds ->
+                if (systemIds.isEmpty()) {
+                    flowOf(false)
+                } else {
+                    retrogradeDb.gameDao().selectHasTopStaffForSystems(systemIds)
+                }
+            }
+            .flowOn(Dispatchers.IO)
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5000),
+                initialValue = false,
+            )
+
+    @OptIn(ExperimentalCoroutinesApi::class)
     val games: StateFlow<List<GameListItem>> =
         combine(
             combine(systemDbNames, searchQuery.map { it.trim() }, selectedGenres, selectedFamily) { systemIds, query, genres, family ->
                 Quad(systemIds, query, genres, family)
             },
-            combine(sortOrder, selectedYear, selectedRating) { order, year, rating ->
-                Triple(order, year, rating)
+            combine(sortOrder, selectedYear, selectedRating, selectedTopStaff) { order, year, rating, topStaff ->
+                Quad(order, year, rating, topStaff)
             },
-        ) { (systemIds, query, genres, family), (order, year, rating) ->
-            FilterParams(systemIds, query, genres, family, order, year, rating)
+        ) { (systemIds, query, genres, family), (order, year, rating, topStaff) ->
+            FilterParams(systemIds, query, genres, family, order, year, rating, topStaff)
         }
-            .flatMapLatest { (systemIds, query, genres, family, order, year, rating) ->
+            .flatMapLatest { (systemIds, query, genres, family, order, year, rating, topStaff) ->
                 if (systemIds.isEmpty()) {
                     flowOf(emptyList())
                 } else {
@@ -123,7 +145,7 @@ class GamesViewModel(
                         query = query,
                         sortOrder = order.name,
                     ).map { list ->
-                        if (selectedLower.isEmpty() && targetFamily == null && targetYear == null && targetRatingText == null) {
+                        if (selectedLower.isEmpty() && targetFamily == null && targetYear == null && targetRatingText == null && !topStaff) {
                             list
                         } else {
                             list.filter { item ->
@@ -147,8 +169,9 @@ class GamesViewModel(
                                 val matchesRating = targetRatingText == null ||
                                     (itemRating != null && itemRating > 0f &&
                                         String.format(Locale.US, "%.1f", itemRating) == targetRatingText)
+                                val matchesTopStaff = !topStaff || item.isTopStaff
 
-                                matchesGenres && matchesFamily && matchesYear && matchesRating
+                                matchesGenres && matchesFamily && matchesYear && matchesRating && matchesTopStaff
                             }
                         }
                     }
@@ -171,6 +194,7 @@ class GamesViewModel(
         val sortOrder: GameSortOrder,
         val year: String?,
         val rating: Float?,
+        val topStaff: Boolean,
     )
 
     companion object {

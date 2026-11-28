@@ -644,6 +644,7 @@ class GameDetailViewModel(
                     players = screenScraperData?.players ?: existingDetails?.players,
                     rating = effectiveRating ?: existingDetails?.rating,
                     ratingCount = alphaLemuroidData?.ratingCount ?: existingDetails?.ratingCount,
+                    isTopStaff = screenScraperData?.isTopStaff ?: (existingDetails?.isTopStaff == true),
                     bannerUrl = finalBannerUri,
                     logoUrl = finalLogoUri,
                     boxArtFrontUrl = finalBoxArtUri ?: existingBoxArt ?: game.coverFrontUrl,

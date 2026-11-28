@@ -421,6 +421,7 @@
     <string name="game_details_chip_filter_message">Choose where to find matching games:</string>
     <string name="game_details_chip_scope_all">All Systems</string>
     <string name="game_details_chip_scope_system">%1$s Only</string>
+    <string name="game_details_best_by_staff">Best by Staff</string>
     <string name="game_details_manual">Manual</string>
     <string name="game_details_manual_choose_language">Choose language</string>
     <string name="game_details_manual_loading">Downloading manual…</string>
